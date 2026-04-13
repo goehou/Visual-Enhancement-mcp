@@ -29,31 +29,6 @@ npm install
 npm run build
 ```
 
-## 作为 npm 包使用
-
-发布到 npm 后，可以直接用 `npx` 启动：
-
-```bash
-npx -y mcp-vision-server \
-  --api-base-url https://your-api.example.com \
-  --api-path /v1/chat/completions \
-  --api-key sk-xxxx \
-  --model your-vision-model \
-  --timeout-ms 60000
-```
-
-开发运行：
-
-```bash
-npm run dev -- --api-base-url https://your-api.example.com --api-key sk-xxxx --model your-vision-model
-```
-
-生产运行：
-
-```bash
-npm run start -- --api-base-url https://your-api.example.com --api-key sk-xxxx --model your-vision-model
-```
-
 ## 启动参数
 
 ```text
