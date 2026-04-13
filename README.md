@@ -1,4 +1,4 @@
-# mcp-vision-server
+# Visual-Enhancement-mcp
 
 一个本地运行的 `stdio MCP server`。它把本地图片或图片 URL 包装成 multimodal 请求，交给你已有的 vision model 识别，再把结果返回给 Claude Code / Codex。
 
