@@ -62,6 +62,11 @@ MCP Client
    - 让 `codex mcp add` 与 `claude mcp add` 可以把 URL、Key、模型名直接写在命令参数中
    - 降低部署时对额外环境文件的依赖
 
+6. npm 发布仅包含运行所需文件
+   - 通过 `bin` 暴露 CLI 入口，支持 `npx mcp-vision-server`
+   - 通过 `files` 白名单避免把源码、IDE 配置与测试资产打进 npm 包
+   - 通过 `prepublishOnly` 在发布前强制执行测试
+
 ## 安全边界
 
 - 只读取调用参数指定的图片路径
@@ -88,3 +93,4 @@ MCP Client
 
 - `0.1.0`: 创建初版项目，提供 `vision_analyze` 与 `vision_ocr`
 - `0.1.1`: 增加 CLI 配置参数，支持在 Codex / Claude Code 的 MCP 启动命令中直接写入 URL、Key、模型名
+- `0.1.2`: 增加 npm 发布元数据、CLI 入口、LICENSE 与面向 `npx` 的接入说明

@@ -1,7 +1,15 @@
+#!/usr/bin/env node
+
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
-import { createVisionAdapter, getHelpText, getRuntimeConfig, getServerMeta, isHelpRequested } from './core/config.js'
+import {
+  createVisionAdapter,
+  getHelpText,
+  getRuntimeConfig,
+  getServerMeta,
+  isHelpRequested
+} from './core/config.js'
 import { registerVisionAnalyzeTool } from './tools/visionAnalyze.js'
 import { registerVisionOcrTool } from './tools/visionOcr.js'
 
@@ -18,8 +26,11 @@ async function main() {
     capabilities: {
       logging: {}
     },
-    instructions:
-      'Use vision_analyze for general image understanding and vision_ocr for text extraction. Prefer imagePath for local files.'
+    instructions: [
+      'Use vision_analyze for general image understanding.',
+      'Use vision_ocr for text extraction.',
+      'Prefer imagePath for local files.'
+    ].join(' ')
   })
 
   registerVisionAnalyzeTool(server, adapter)

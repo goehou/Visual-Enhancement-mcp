@@ -29,6 +29,19 @@ npm install
 npm run build
 ```
 
+## 作为 npm 包使用
+
+发布到 npm 后，可以直接用 `npx` 启动：
+
+```bash
+npx -y mcp-vision-server \
+  --api-base-url https://your-api.example.com \
+  --api-path /v1/chat/completions \
+  --api-key sk-xxxx \
+  --model your-vision-model \
+  --timeout-ms 60000
+```
+
 开发运行：
 
 ```bash
@@ -77,7 +90,7 @@ VISION_TIMEOUT_MS=60000
 
 ```powershell
 codex mcp add vision -- `
-  node <repo-path>/dist/server.js `
+  npx -y mcp-vision-server `
   --api-base-url https://your-api.example.com `
   --api-path /v1/chat/completions `
   --api-key sk-xxxx `
@@ -92,9 +105,10 @@ codex mcp add vision -- `
 ```toml
 [mcp_servers.vision]
 type = "stdio"
-command = "node"
+command = "npx"
 args = [
-  "<repo-path>/dist/server.js",
+  "-y",
+  "mcp-vision-server",
   "--api-base-url", "https://your-api.example.com",
   "--api-path", "/v1/chat/completions",
   "--api-key", "sk-xxxx",
@@ -116,7 +130,7 @@ codex mcp get vision --json
 
 ```powershell
 claude mcp add vision -- `
-  node <repo-path>/dist/server.js `
+  npx -y mcp-vision-server `
   --api-base-url https://your-api.example.com `
   --api-path /v1/chat/completions `
   --api-key sk-xxxx `
@@ -192,3 +206,14 @@ OCR：
 - 当前只适配 OpenAI-compatible 接口
 - 大图会带来更高延迟和 token 成本
 - 某些上游对 `detail`、`max_tokens` 的支持不完全一致
+
+## 发布到 npm
+
+```bash
+npm login
+npm test
+npm pack --dry-run
+npm publish --access public
+```
+
+如果 `mcp-vision-server` 包名已被占用，请先修改 `package.json` 中的 `name` 字段再发布。

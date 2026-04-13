@@ -1,15 +1,47 @@
 {
   "name": "mcp-vision-server",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "MCP stdio server for image recognition via an existing vision model",
+  "license": "MIT",
+  "author": "ANYU",
   "type": "module",
   "main": "dist/server.js",
+  "bin": {
+    "mcp-vision-server": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/goehou/mcp-vision-server.git"
+  },
+  "homepage": "https://github.com/goehou/mcp-vision-server#readme",
+  "bugs": {
+    "url": "https://github.com/goehou/mcp-vision-server/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "vision",
+    "ocr",
+    "multimodal"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/server.ts",
     "start": "node dist/server.js",
-    "test": "npm run build && node --test dist/**/*.test.js"
+    "test": "npm run build && node --test dist/**/*.test.js",
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
