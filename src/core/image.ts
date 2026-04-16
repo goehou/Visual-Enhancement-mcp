@@ -1,5 +1,8 @@
 import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import * as z from 'zod/v4'
 
 const MIME_BY_EXT: Record<string, string> = {
   '.png': 'image/png',
@@ -10,20 +13,81 @@ const MIME_BY_EXT: Record<string, string> = {
   '.bmp': 'image/bmp'
 }
 
+const IMAGE_MEDIA_TYPE_PATTERN = /^image\/[a-zA-Z0-9.+-]+$/i
+
 export interface LoadedImage {
   imageUrl: string
   mediaType: string
   sourceLabel: string
 }
 
-export async function loadImageInput(input: { imagePath?: string; imageUrl?: string }): Promise<LoadedImage> {
-  const provided = [input.imagePath, input.imageUrl].filter(Boolean)
+export interface ImageInput {
+  imagePath?: string
+  imageUrl?: string
+  imageBase64?: string
+  imageMediaType?: string
+}
+
+export function createImageInputSchema<T extends z.core.$ZodLooseShape>(extraShape: T) {
+  return z
+    .object({
+      imagePath: z.string().min(1).optional().describe('Local absolute image path. Mutually exclusive with imageUrl and imageBase64.'),
+      imageUrl: z
+        .string()
+        .url()
+        .optional()
+        .describe('Remote URL, data URL, or file URL. Mutually exclusive with imagePath and imageBase64.'),
+      imageBase64: z
+        .base64()
+        .optional()
+        .describe('Base64-encoded image payload. Use this for uploaded attachments when the client can pass file contents.'),
+      imageMediaType: z
+        .string()
+        .regex(IMAGE_MEDIA_TYPE_PATTERN, 'imageMediaType must be an image/* MIME type.')
+        .optional()
+        .describe('Required with imageBase64, for example image/png or image/jpeg.'),
+      ...extraShape
+    })
+    .superRefine((value, ctx) => {
+      const imageValue = value as ImageInput
+      const provided = [imageValue.imagePath, imageValue.imageUrl, imageValue.imageBase64].filter(Boolean)
+      if (provided.length !== 1) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Exactly one of imagePath, imageUrl, or imageBase64 must be provided.'
+        })
+      }
+
+      if (imageValue.imageBase64 && !imageValue.imageMediaType) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['imageMediaType'],
+          message: 'imageMediaType is required when imageBase64 is provided.'
+        })
+      }
+
+      if (!imageValue.imageBase64 && imageValue.imageMediaType) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['imageMediaType'],
+          message: 'imageMediaType is only supported together with imageBase64.'
+        })
+      }
+    })
+}
+
+export async function loadImageInput(input: ImageInput): Promise<LoadedImage> {
+  const provided = [input.imagePath, input.imageUrl, input.imageBase64].filter(Boolean)
   if (provided.length !== 1) {
-    throw new Error('必须且只能提供 imagePath 或 imageUrl 其中一个')
+    throw new Error('Exactly one of imagePath, imageUrl, or imageBase64 must be provided.')
   }
 
   if (input.imagePath) {
     return loadFromPath(input.imagePath)
+  }
+
+  if (input.imageBase64) {
+    return loadFromBase64(input.imageBase64, input.imageMediaType)
   }
 
   return loadFromUrl(input.imageUrl!)
@@ -35,7 +99,7 @@ async function loadFromPath(imagePath: string): Promise<LoadedImage> {
   const ext = path.extname(resolvedPath).toLowerCase()
   const mediaType = MIME_BY_EXT[ext]
   if (!mediaType) {
-    throw new Error(`暂不支持的图片格式: ${ext || 'unknown'}`)
+    throw new Error(`Unsupported image format: ${ext || 'unknown'}`)
   }
 
   const buffer = await readFile(resolvedPath)
@@ -48,10 +112,10 @@ async function loadFromPath(imagePath: string): Promise<LoadedImage> {
   }
 }
 
-function loadFromUrl(imageUrl: string): LoadedImage {
+async function loadFromUrl(imageUrl: string): Promise<LoadedImage> {
   const parsed = new URL(imageUrl)
-  if (!['http:', 'https:', 'data:'].includes(parsed.protocol)) {
-    throw new Error(`不支持的 URL 协议: ${parsed.protocol}`)
+  if (!['http:', 'https:', 'data:', 'file:'].includes(parsed.protocol)) {
+    throw new Error(`Unsupported URL protocol: ${parsed.protocol}`)
   }
 
   if (parsed.protocol === 'data:') {
@@ -63,10 +127,26 @@ function loadFromUrl(imageUrl: string): LoadedImage {
     }
   }
 
+  if (parsed.protocol === 'file:') {
+    return loadFromPath(fileURLToPath(parsed))
+  }
+
   const ext = path.extname(parsed.pathname).toLowerCase()
   return {
     imageUrl,
     mediaType: MIME_BY_EXT[ext] || 'image/*',
     sourceLabel: imageUrl
+  }
+}
+
+function loadFromBase64(imageBase64: string, imageMediaType?: string): LoadedImage {
+  if (!imageMediaType) {
+    throw new Error('imageMediaType is required when imageBase64 is provided.')
+  }
+
+  return {
+    imageUrl: `data:${imageMediaType};base64,${imageBase64}`,
+    mediaType: imageMediaType,
+    sourceLabel: 'base64-upload'
   }
 }

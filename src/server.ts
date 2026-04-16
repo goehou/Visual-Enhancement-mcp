@@ -29,7 +29,9 @@ async function main() {
     instructions: [
       'Use vision_analyze for general image understanding.',
       'Use vision_ocr for text extraction.',
-      'Prefer imagePath for local files.'
+      'Prefer imagePath for local files.',
+      'Use imageUrl for remote URLs, data URLs, or file URLs.',
+      'Use imageBase64 with imageMediaType when the client can forward uploaded attachment bytes.'
     ].join(' ')
   })
 
