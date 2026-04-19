@@ -1,55 +1,84 @@
-# Visual-Enhancement-mcp
+# mcp-vision-server
 
-一个本地运行的 `stdio MCP server`。它把本地图片或图片 URL 包装成 multimodal 请求，交给你已有的 vision model 识别，再把结果返回给 Claude Code / Codex。
+A local `stdio` MCP server that forwards image understanding and OCR requests to an existing vision-capable chat completions API.
 
-## 当前能力
+## Features
 
-- `vision_analyze`: 通用图片理解
-- `vision_ocr`: OCR 文本提取
-- 支持 `imagePath` 或 `imageUrl`
-- 当前适配 `OpenAI-compatible Chat Completions` 接口
+- `vision_analyze`: general image understanding
+- `vision_ocr`: text extraction
+- Supports `imagePath`, `imageUrl`, and uploaded `imageBase64 + imageMediaType`
+- Accepts `http(s)://`, `data:`, and `file://` image URLs
+- Works with OpenAI-compatible Chat Completions APIs
 
-## 配置优先级
+## Why the previous attachment flow failed
 
-```text
-CLI 参数 > 环境变量 > 默认值
-```
+The old server only accepted:
 
-这意味着你可以在 `claude mcp add` 或 `codex mcp add` 时，直接把视觉模型的 URL、Key、模型名写进命令参数，不必依赖单独的环境变量文件。
+- `imagePath`
+- `imageUrl`
 
-## 运行要求
+When an MCP client let the user drag an image into chat but did not expose a local file path or URL to the tool call, the server had nothing it could read.
+
+This repo now also supports:
+
+- `imageBase64`
+- `imageMediaType`
+
+That gives MCP clients a third transport shape for uploaded files: they can pass attachment bytes directly instead of inventing a path.
+
+## Important limitation
+
+This change makes the server attachment-friendly, but it does **not** force every MCP client to map drag-and-drop uploads into tool arguments automatically.
+
+What is supported now:
+
+- A client can send a local absolute path through `imagePath`
+- A client can send a `file://` URL through `imageUrl`
+- A client can send uploaded bytes through `imageBase64` plus `imageMediaType`
+
+What still depends on the client:
+
+- Whether dragging an image into the chat UI is automatically converted into one of the fields above
+
+If the host client never forwards attachment data to the MCP tool, the server still cannot see that file.
+
+## Requirements
 
 - Node.js 22+
-- 一个可用的 vision / multimodal model API
+- A reachable vision / multimodal model API
 
-## 安装与构建
+## Install
 
 ```bash
 npm install
 npm run build
 ```
 
-## 启动参数
+## Configuration priority
 
 ```text
---api-base-url <url>      上游视觉模型 API 根地址
---api-path <path>         上游 API 路径，默认 /v1/chat/completions
---api-key <key>           上游 API Key
---model <name>            默认视觉模型名
---timeout-ms <ms>         请求超时，默认 60000
---server-name <name>      MCP server 名称
---server-version <ver>    MCP server 版本
+CLI arguments > environment variables > defaults
 ```
 
-查看帮助：
+## CLI options
+
+```text
+--api-base-url <url>      Upstream API base URL
+--api-path <path>         Upstream API path, default: /v1/chat/completions
+--api-key <key>           Upstream API key
+--model <name>            Default vision model
+--timeout-ms <ms>         Request timeout, default: 60000
+--server-name <name>      MCP server name
+--server-version <ver>    MCP server version
+```
+
+Show help:
 
 ```bash
 node dist/server.js --help
 ```
 
-## 环境变量兜底
-
-如果你不想把参数写在命令行，也可以继续使用环境变量：
+## Environment variables
 
 ```bash
 VISION_API_BASE_URL=https://api.openai.com
@@ -59,9 +88,7 @@ VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
 ```
 
-## 配置到 Codex
-
-### 命令式添加
+## Codex example
 
 ```powershell
 codex mcp add vision -- `
@@ -73,35 +100,7 @@ codex mcp add vision -- `
   --timeout-ms 60000
 ```
 
-### 配置文件写法
-
-修改本机的 `config.toml`：
-
-```toml
-[mcp_servers.vision]
-type = "stdio"
-command = "npx"
-args = [
-  "-y",
-  "mcp-vision-server",
-  "--api-base-url", "https://your-api.example.com",
-  "--api-path", "/v1/chat/completions",
-  "--api-key", "sk-xxxx",
-  "--model", "your-vision-model",
-  "--timeout-ms", "60000"
-]
-```
-
-查看是否成功：
-
-```powershell
-codex mcp list
-codex mcp get vision --json
-```
-
-## 配置到 Claude Code
-
-### 命令式添加
+## Claude Code example
 
 ```powershell
 claude mcp add vision -- `
@@ -113,72 +112,95 @@ claude mcp add vision -- `
   --timeout-ms 60000
 ```
 
-### 说明
-
-- `claude mcp add` 在 `--` 后面跟的是完整子进程命令
-- 所以你可以把 URL、Key、模型名直接作为 MCP server 的启动参数写进去
-- 如果你更喜欢环境变量，也可以继续用 `-e`
-
-查看是否成功：
-
-```powershell
-claude mcp list
-claude mcp get vision
-```
-
-## 工具说明
+## Tool inputs
 
 ### `vision_analyze`
 
-输入：
+Required:
 
-- `imagePath`: 本地绝对路径，与 `imageUrl` 二选一
-- `imageUrl`: 远程 URL 或 data URL，与 `imagePath` 二选一
-- `prompt`: 分析指令
-- `model?`: 可选，覆盖默认模型
-- `detail?`: `auto | low | high`
-- `maxTokens?`: 返回 token 上限
+- `prompt`
 
-### `vision_ocr`
+Exactly one image source:
 
-输入：
+- `imagePath`: local absolute path
+- `imageUrl`: remote URL, `data:` URL, or `file://` URL
+- `imageBase64`: base64-encoded image payload
 
-- `imagePath` 或 `imageUrl`
-- `languageHint?`
-- `model?`
-- `detail?`
-- `maxTokens?`
+Required with `imageBase64`:
 
-## 使用示例
+- `imageMediaType`: for example `image/png`, `image/jpeg`
 
-通用识图：
+Optional:
+
+- `model`
+- `detail`: `auto | low | high`
+- `maxTokens`
+
+Example with a local path:
 
 ```json
 {
   "name": "vision_analyze",
   "arguments": {
-    "imagePath": "<absolute-path-to-image>",
-    "prompt": "识别这张图里的主要内容和可见文字"
+    "imagePath": "C:\\\\images\\\\cat.png",
+    "prompt": "Describe the main subject and any visible text."
   }
 }
 ```
 
-OCR：
+Example with uploaded bytes:
+
+```json
+{
+  "name": "vision_analyze",
+  "arguments": {
+    "imageBase64": "<base64-image>",
+    "imageMediaType": "image/png",
+    "prompt": "Describe the UI and extract visible labels."
+  }
+}
+```
+
+### `vision_ocr`
+
+Exactly one image source:
+
+- `imagePath`
+- `imageUrl`
+- `imageBase64`
+
+Required with `imageBase64`:
+
+- `imageMediaType`
+
+Optional:
+
+- `languageHint`
+- `model`
+- `detail`
+- `maxTokens`
+
+Example:
 
 ```json
 {
   "name": "vision_ocr",
   "arguments": {
-    "imagePath": "<absolute-path-to-image>",
-    "languageHint": "zh-CN"
+    "imageUrl": "file:///C:/images/receipt.png",
+    "languageHint": "en"
   }
 }
 ```
 
-## 已知限制
+## Tests
 
-- 当前只支持单图输入
-- 当前只适配 OpenAI-compatible 接口
-- 大图会带来更高延迟和 token 成本
-- 某些上游对 `detail`、`max_tokens` 的支持不完全一致
+```bash
+npm test
+```
 
+## Known limitations
+
+- Single-image input only
+- OpenAI-compatible upstream APIs only
+- Large images increase latency and token cost
+- Some upstream providers may ignore `detail` or `max_tokens`

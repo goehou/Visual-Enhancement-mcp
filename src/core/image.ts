@@ -27,6 +27,63 @@ export interface ImageInput {
   imageBase64?: string
   imageMediaType?: string
 }
+<<<<<<< HEAD
+=======
+
+export function createImageInputSchema<T extends z.core.$ZodLooseShape>(extraShape: T) {
+  return z
+    .object({
+      imagePath: z.string().min(1).optional().describe('Local absolute image path. Mutually exclusive with imageUrl and imageBase64.'),
+      imageUrl: z
+        .string()
+        .url()
+        .optional()
+        .describe('Remote URL, data URL, or file URL. Mutually exclusive with imagePath and imageBase64.'),
+      imageBase64: z
+        .base64()
+        .optional()
+        .describe('Base64-encoded image payload. Use this for uploaded attachments when the client can pass file contents.'),
+      imageMediaType: z
+        .string()
+        .regex(IMAGE_MEDIA_TYPE_PATTERN, 'imageMediaType must be an image/* MIME type.')
+        .optional()
+        .describe('Required with imageBase64, for example image/png or image/jpeg.'),
+      ...extraShape
+    })
+    .superRefine((value, ctx) => {
+      const imageValue = value as ImageInput
+      const provided = [imageValue.imagePath, imageValue.imageUrl, imageValue.imageBase64].filter(Boolean)
+      if (provided.length !== 1) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Exactly one of imagePath, imageUrl, or imageBase64 must be provided.'
+        })
+      }
+
+      if (imageValue.imageBase64 && !imageValue.imageMediaType) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['imageMediaType'],
+          message: 'imageMediaType is required when imageBase64 is provided.'
+        })
+      }
+
+      if (!imageValue.imageBase64 && imageValue.imageMediaType) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['imageMediaType'],
+          message: 'imageMediaType is only supported together with imageBase64.'
+        })
+      }
+    })
+}
+
+export async function loadImageInput(input: ImageInput): Promise<LoadedImage> {
+  const provided = [input.imagePath, input.imageUrl, input.imageBase64].filter(Boolean)
+  if (provided.length !== 1) {
+    throw new Error('Exactly one of imagePath, imageUrl, or imageBase64 must be provided.')
+  }
+>>>>>>> d220540c57d690c55cd8d26bd25456bf9e538539
 
 export function createImageInputSchema<T extends z.core.$ZodLooseShape>(extraShape: T) {
   return z
@@ -91,11 +148,15 @@ export async function loadImageInput(input: ImageInput): Promise<LoadedImage> {
     return loadFromBase64(input.imageBase64, input.imageMediaType)
   }
 
+<<<<<<< HEAD
   if (input.imageUrl) {
     return loadFromUrl(input.imageUrl)
   }
 
   throw new Error('Exactly one of imagePath, imageUrl, or imageBase64 must be provided.')
+=======
+  return loadFromUrl(input.imageUrl!)
+>>>>>>> d220540c57d690c55cd8d26bd25456bf9e538539
 }
 
 async function loadFromPath(imagePath: string): Promise<LoadedImage> {
