@@ -3,13 +3,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
-import {
-  createVisionAdapter,
-  getHelpText,
-  getRuntimeConfig,
-  getServerMeta,
-  isHelpRequested
-} from './core/config.js'
+import { createVisionAdapter, getHelpText, getRuntimeConfig, getServerMeta, isHelpRequested } from './core/config.js'
 import { registerVisionAnalyzeTool } from './tools/visionAnalyze.js'
 import { registerVisionOcrTool } from './tools/visionOcr.js'
 
@@ -29,7 +23,9 @@ async function main() {
     instructions: [
       'Use vision_analyze for general image understanding.',
       'Use vision_ocr for text extraction.',
-      'Prefer imagePath for local files.'
+      'Prefer imagePath for local files.',
+      'Use imageUrl for remote URLs, data URLs, or file URLs.',
+      'Use imageBase64 with imageMediaType when the client can forward uploaded attachment bytes.'
     ].join(' ')
   })
 
@@ -38,7 +34,12 @@ async function main() {
 
   const transport = new StdioServerTransport()
   await server.connect(transport)
-  console.error(`${meta.name} running on stdio`)
+  console.error(
+    `${meta.name} v${meta.version} running on stdio ` +
+      `(apiBase=${runtimeConfig.apiBaseUrl}, path=${runtimeConfig.apiPath}, ` +
+      `model=${runtimeConfig.defaultModel}, timeout=${runtimeConfig.timeoutMs}ms, ` +
+      `apiKey=${runtimeConfig.apiKey ? 'set' : 'none'})`
+  )
 }
 
 main().catch((error) => {
