@@ -204,3 +204,7 @@ npm test
 - OpenAI-compatible upstream APIs only
 - Large images increase latency and token cost
 - Some upstream providers may ignore `detail` or `max_tokens`
+
+## 🤝 友情链接
+
+- [Linux Do](https://linux.do/)
