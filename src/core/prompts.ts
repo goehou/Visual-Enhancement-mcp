@@ -1,20 +1,37 @@
+export type OcrOutputFormat = 'plain' | 'markdown' | 'json'
+
 export function buildAnalyzePrompt(prompt: string): string {
   const trimmed = prompt.trim()
   if (!trimmed) {
-    throw new Error('prompt 不能为空')
+    throw new Error('prompt cannot be empty')
   }
   return trimmed
 }
 
-export function buildOcrPrompt(languageHint?: string): string {
-  const hint = languageHint?.trim() ? `已知语言偏好: ${languageHint.trim()}。\n` : ''
+export function buildOcrPrompt(languageHint?: string, outputFormat: OcrOutputFormat = 'plain'): string {
+  const hint = languageHint?.trim() ? `Known language preference: ${languageHint.trim()}\n` : ''
+  const formatInstructions: Record<OcrOutputFormat, string[]> = {
+    plain: ['Output format: plain text.', 'Return only the extracted text.'],
+    markdown: [
+      'Output format: Markdown.',
+      'Preserve headings, lists, paragraphs, and tables as Markdown when feasible.',
+      'Return only the Markdown document.'
+    ],
+    json: [
+      'Output format: valid JSON only.',
+      'Use this shape: {"text":"full extracted text","blocks":[{"type":"paragraph|heading|table|list|other","text":"block text"}]}.',
+      'Do not wrap the JSON in Markdown fences.'
+    ]
+  }
+
   return [
-    '请执行高保真 OCR。',
+    'Perform high-fidelity OCR.',
     hint,
-    '要求：',
-    '1. 提取图片中全部可见文字。',
-    '2. 尽量保持原有段落、换行、表格顺序。',
-    '3. 不要解释，不要总结，不要补全文字。',
-    '4. 无法确认的字符用 [uncertain] 标注。'
+    'Requirements:',
+    '1. Extract all visible text in the image.',
+    '2. Preserve original paragraphs, line breaks, and table reading order as much as possible.',
+    '3. Do not explain, summarize, or fill in missing text.',
+    '4. Mark uncertain characters with [uncertain].',
+    ...formatInstructions[outputFormat]
   ].join('\n')
 }

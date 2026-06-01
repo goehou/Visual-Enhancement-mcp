@@ -10,6 +10,13 @@ export const visionOptionsShape = {
   maxTokens: z.number().int().positive().max(4096).optional().describe('Optional max output tokens.')
 }
 
+export const visionOutputShape = {
+  text: z.string().describe('Text returned by the vision model.'),
+  model: z.string().describe('Model used for the request.'),
+  sourceLabel: z.string().describe('Resolved image source label.'),
+  mediaType: z.string().describe('Resolved image media type.')
+}
+
 export interface VisionToolDefinition {
   name: string
   title: string
@@ -38,7 +45,8 @@ export function registerVisionTool(
     {
       title: def.title,
       description: def.description,
-      inputSchema: createImageInputSchema({ ...def.extraShape, ...visionOptionsShape })
+      inputSchema: createImageInputSchema({ ...def.extraShape, ...visionOptionsShape }),
+      outputSchema: visionOutputShape
     },
     async (rawArgs) => {
       const args = rawArgs as VisionToolArgs
@@ -51,13 +59,20 @@ export function registerVisionTool(
         detail,
         maxTokens
       })
+      const structuredContent = {
+        text: result.text,
+        model: result.model,
+        sourceLabel: image.sourceLabel,
+        mediaType: image.mediaType
+      }
       return {
         content: [
           {
             type: 'text' as const,
             text: result.text
           }
-        ]
+        ],
+        structuredContent
       }
     }
   )

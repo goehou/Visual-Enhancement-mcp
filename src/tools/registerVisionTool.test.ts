@@ -55,7 +55,7 @@ test('registerVisionTool forwards prompt, detail, maxTokens, model to adapter', 
     model: 'custom-model',
     detail: 'low',
     maxTokens: 321
-  })) as { content: Array<{ type: string; text: string }> }
+  })) as { content: Array<{ type: string; text: string }>; structuredContent: Record<string, unknown> }
 
   assert.equal(calls.length, 1)
   assert.equal(calls[0].prompt, 'PREFIX:hello')
@@ -64,6 +64,12 @@ test('registerVisionTool forwards prompt, detail, maxTokens, model to adapter', 
   assert.equal(calls[0].detail, 'low')
   assert.equal(calls[0].maxTokens, 321)
   assert.deepEqual(result.content, [{ type: 'text', text: 'stub-result' }])
+  assert.deepEqual(result.structuredContent, {
+    text: 'stub-result',
+    model: 'custom-model',
+    sourceLabel: 'https://example.com/a.png',
+    mediaType: 'image/png'
+  })
 })
 
 test('registerVisionTool passes through optional extra fields (languageHint)', async () => {
@@ -88,6 +94,25 @@ test('registerVisionTool passes through optional extra fields (languageHint)', a
 
   assert.equal(calls[0].prompt, 'OCR:zh-CN')
   assert.match(calls[0].imageUrl, /^data:image\/png;base64,aGVsbG8=/)
+})
+
+test('registerVisionTool declares a structured output schema', () => {
+  const { registered, server } = stubServer()
+  const { adapter } = stubAdapter()
+
+  registerVisionTool(server, adapter as any, {
+    name: 'vision_structured_test',
+    title: 'Structured test',
+    description: 'desc',
+    extraShape: {
+      prompt: z.string()
+    },
+    buildPrompt: (args) => args.prompt as string
+  })
+
+  assert.ok((registered[0].meta as any).outputSchema)
+  assert.ok(((registered[0].meta as any).outputSchema as Record<string, unknown>).text)
+  assert.ok(((registered[0].meta as any).outputSchema as Record<string, unknown>).model)
 })
 
 test('registerVisionTool surfaces loadImageInput failures', async () => {

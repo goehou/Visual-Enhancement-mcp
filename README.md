@@ -1,5 +1,7 @@
 # mcp-vision-server
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 A local `stdio` MCP server that forwards image understanding and OCR requests to an existing vision-capable chat completions API.
 
 ## Features
@@ -176,6 +178,7 @@ Required with `imageBase64`:
 Optional:
 
 - `languageHint`
+- `outputFormat`: `plain | markdown | json`, default: `plain`
 - `model`
 - `detail`
 - `maxTokens`
@@ -187,8 +190,22 @@ Example:
   "name": "vision_ocr",
   "arguments": {
     "imageUrl": "file:///C:/images/receipt.png",
-    "languageHint": "en"
+    "languageHint": "en",
+    "outputFormat": "markdown"
   }
+}
+```
+
+## Tool outputs
+
+Both tools return the model text in `content` for compatibility, and also expose structured output for clients that support MCP `structuredContent`:
+
+```json
+{
+  "text": "recognized or analyzed text",
+  "model": "model-used",
+  "sourceLabel": "resolved image source",
+  "mediaType": "image/png"
 }
 ```
 
@@ -205,6 +222,6 @@ npm test
 - Large images increase latency and token cost
 - Some upstream providers may ignore `detail` or `max_tokens`
 
-## 🤝 友情链接
+## Links
 
 - [Linux Do](https://linux.do/)
