@@ -51,9 +51,41 @@
 
 ## 安装
 
+### 从 npm 运行（推荐）
+
+本包已发布到 npm，无需克隆仓库，直接用 `npx` 运行，传入你的上游 API 地址、密钥和模型名：
+
 ```bash
+npx -y mcp-vision-server \
+  --api-base-url https://your-api.example.com \
+  --api-path /v1/chat/completions \
+  --api-key sk-xxxx \
+  --model your-vision-model
+```
+
+仅查看 CLI 帮助：
+
+```bash
+npx -y mcp-vision-server --help
+```
+
+或全局安装：
+
+```bash
+npm install -g mcp-vision-server
+mcp-vision-server --help
+```
+
+大多数 MCP 客户端（Codex、Claude Code 等）会通过 `npx -y mcp-vision-server` 自动拉起服务器 —— 见下方示例。
+
+### 从源码构建（开发）
+
+```bash
+git clone https://github.com/goehou/mcp-vision-server.git
+cd mcp-vision-server
 npm install
 npm run build
+node dist/server.js --help
 ```
 
 ## 配置优先级
@@ -90,6 +122,20 @@ VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
 ```
 
+## 必填配置
+
+至少需要告诉服务器上游视觉 API 在哪里、调用哪个模型：
+
+| 选项 | 是否必填 | 填什么 | 示例 |
+| --- | --- | --- | --- |
+| `--api-base-url` | 是 | 上游 OpenAI 风格 API 的根地址（协议+主机，不含路径） | `https://api.openai.com` 或 `https://your-proxy.example.com` |
+| `--api-path` | 否 | 拼在根地址后的 chat completions 路径 | `/v1/chat/completions`（默认） |
+| `--api-key` | 是* | 上游 API 的 Bearer 密钥。*仅当端点无需鉴权时可省 | `sk-xxxx` |
+| `--model` | 是 | 上游 API 提供的、具备视觉能力的模型名 | `gpt-4o-mini`、`qwen-vl-max`、`your-vision-model` |
+| `--timeout-ms` | 否 | 请求超时（毫秒） | `60000`（默认） |
+
+最终请求发往 `<api-base-url><api-path>`。例如 `--api-base-url https://api.openai.com --api-path /v1/chat/completions` 会调用 `https://api.openai.com/v1/chat/completions`。
+
 ## Codex 示例
 
 ```powershell
@@ -113,6 +159,31 @@ claude mcp add vision -- `
   --model your-vision-model `
   --timeout-ms 60000
 ```
+
+## MCP 客户端配置（JSON）
+
+使用 JSON 配置文件的客户端（Claude Desktop、VS Code、Cursor 等）可以这样注册服务器。把 URL、密钥和模型名换成你自己的：
+
+```json
+{
+  "mcpServers": {
+    "vision": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-vision-server",
+        "--api-base-url", "https://your-api.example.com",
+        "--api-path", "/v1/chat/completions",
+        "--api-key", "sk-xxxx",
+        "--model", "your-vision-model",
+        "--timeout-ms", "60000"
+      ]
+    }
+  }
+}
+```
+
+如果你的客户端更习惯用环境变量而非 CLI 参数，可以改用 `env` 块（`VISION_API_BASE_URL`、`VISION_API_KEY`、`VISION_MODEL` 等），并去掉对应的 `args`。
 
 ## 工具输入
 

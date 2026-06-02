@@ -51,9 +51,41 @@ If the host client never forwards attachment data to the MCP tool, the server st
 
 ## Install
 
+### Run from npm (recommended)
+
+The package is published to npm, so you do not need to clone the repo. Run it directly with `npx`, passing your upstream API base URL, key, and model name:
+
 ```bash
+npx -y mcp-vision-server \
+  --api-base-url https://your-api.example.com \
+  --api-path /v1/chat/completions \
+  --api-key sk-xxxx \
+  --model your-vision-model
+```
+
+Just checking the CLI help:
+
+```bash
+npx -y mcp-vision-server --help
+```
+
+Or install it globally:
+
+```bash
+npm install -g mcp-vision-server
+mcp-vision-server --help
+```
+
+Most MCP clients (Codex, Claude Code, etc.) launch the server via `npx -y mcp-vision-server` automatically — see the examples below.
+
+### Build from source (development)
+
+```bash
+git clone https://github.com/goehou/mcp-vision-server.git
+cd mcp-vision-server
 npm install
 npm run build
+node dist/server.js --help
 ```
 
 ## Configuration priority
@@ -90,6 +122,20 @@ VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
 ```
 
+## Required configuration
+
+At minimum you must tell the server where the upstream vision API lives and which model to call:
+
+| Option | Required | What to put | Example |
+| --- | --- | --- | --- |
+| `--api-base-url` | Yes | Root URL of your upstream OpenAI-compatible API (scheme + host, no path) | `https://api.openai.com` or `https://your-proxy.example.com` |
+| `--api-path` | No | Chat completions path appended to the base URL | `/v1/chat/completions` (default) |
+| `--api-key` | Yes* | Bearer key for the upstream API. *Optional only if your endpoint needs no auth | `sk-xxxx` |
+| `--model` | Yes | Name of a vision-capable model the upstream API exposes | `gpt-4o-mini`, `qwen-vl-max`, `your-vision-model` |
+| `--timeout-ms` | No | Request timeout in milliseconds | `60000` (default) |
+
+The final request goes to `<api-base-url><api-path>`. For example `--api-base-url https://api.openai.com --api-path /v1/chat/completions` calls `https://api.openai.com/v1/chat/completions`.
+
 ## Codex example
 
 ```powershell
@@ -113,6 +159,31 @@ claude mcp add vision -- `
   --model your-vision-model `
   --timeout-ms 60000
 ```
+
+## MCP client config (JSON)
+
+Clients that use a JSON config file (Claude Desktop, VS Code, Cursor, etc.) can register the server like this. Replace the URL, key, and model with your own:
+
+```json
+{
+  "mcpServers": {
+    "vision": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-vision-server",
+        "--api-base-url", "https://your-api.example.com",
+        "--api-path", "/v1/chat/completions",
+        "--api-key", "sk-xxxx",
+        "--model", "your-vision-model",
+        "--timeout-ms", "60000"
+      ]
+    }
+  }
+}
+```
+
+If your client prefers environment variables over CLI flags, you can instead pass an `env` block (`VISION_API_BASE_URL`, `VISION_API_KEY`, `VISION_MODEL`, ...) and drop the matching `args`.
 
 ## Tool inputs
 
