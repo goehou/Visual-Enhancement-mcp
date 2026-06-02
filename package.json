@@ -1,6 +1,6 @@
 {
   "name": "mcp-vision-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "MCP stdio server for image recognition via an existing vision model",
   "license": "MIT",
@@ -11,7 +11,8 @@
     "mcp-vision-server": "dist/server.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "!dist/**/*.test.js",
     "README.md",
     "LICENSE"
   ],
