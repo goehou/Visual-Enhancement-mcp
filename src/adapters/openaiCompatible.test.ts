@@ -54,9 +54,33 @@ test('normalizeContent falls back to reasoning when content is null', () => {
   assert.equal(text, 'detected cabbage')
 })
 
+test('normalizeContent falls back to reasoning when string content is empty', () => {
+  const text = normalizeContent({
+    choices: [{ message: { content: '', reasoning: '  detected cabbage  ' } }]
+  })
+
+  assert.equal(text, 'detected cabbage')
+})
+
 test('normalizeContent falls back to reasoning_content when reasoning is empty', () => {
   const text = normalizeContent({
     choices: [{ message: { content: undefined, reasoning: ' ', reasoning_content: '  detected cabbage  ' } }]
+  })
+
+  assert.equal(text, 'detected cabbage')
+})
+
+test('normalizeContent falls back to reasoning_content when string content is blank', () => {
+  const text = normalizeContent({
+    choices: [{ message: { content: '   ', reasoning_content: '  detected cabbage  ' } }]
+  })
+
+  assert.equal(text, 'detected cabbage')
+})
+
+test('normalizeContent falls back to reasoning when array content has no usable text', () => {
+  const text = normalizeContent({
+    choices: [{ message: { content: [{ type: 'text', text: '   ' }], reasoning: '  detected cabbage  ' } }]
   })
 
   assert.equal(text, 'detected cabbage')
@@ -77,6 +101,7 @@ function createAdapter(overrides: Partial<ConstructorParameters<typeof OpenAICom
     apiKey: 'sk-test',
     defaultModel: 'vision-model',
     timeoutMs: 50,
+    maxTokens: 4096,
     ...overrides
   })
 }
@@ -183,4 +208,55 @@ test('analyze returns normalized text on success', async () => {
       assert.equal(result.model, 'vision-model')
     }
   )
+})
+
+test('analyze sends configured max token default when input omits maxTokens', async () => {
+  const adapter = createAdapter({ maxTokens: 8192 })
+  let requestBody: any
+
+  await withStubFetch(
+    async (_url, init) => {
+      requestBody = JSON.parse(init.body as string)
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'hello world' } }]
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    },
+    async () => {
+      await adapter.analyze({
+        prompt: 'describe',
+        imageUrl: 'https://example.com/a.png'
+      })
+    }
+  )
+
+  assert.equal(requestBody.max_tokens, 8192)
+})
+
+test('analyze prefers input maxTokens over configured default', async () => {
+  const adapter = createAdapter({ maxTokens: 8192 })
+  let requestBody: any
+
+  await withStubFetch(
+    async (_url, init) => {
+      requestBody = JSON.parse(init.body as string)
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'hello world' } }]
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    },
+    async () => {
+      await adapter.analyze({
+        prompt: 'describe',
+        imageUrl: 'https://example.com/a.png',
+        maxTokens: 1234
+      })
+    }
+  )
+
+  assert.equal(requestBody.max_tokens, 1234)
 })

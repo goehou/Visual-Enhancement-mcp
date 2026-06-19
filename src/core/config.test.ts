@@ -9,6 +9,7 @@ const ENV_KEYS = [
   'VISION_API_KEY',
   'VISION_MODEL',
   'VISION_TIMEOUT_MS',
+  'VISION_MAX_TOKENS',
   'MCP_SERVER_NAME',
   'MCP_SERVER_VERSION'
 ]
@@ -63,12 +64,14 @@ test('getRuntimeConfig falls back to environment variables when argv is empty', 
       assert.equal(config.defaultModel, 'gpt-env')
       assert.equal(config.apiKey, 'sk-env')
       assert.equal(config.timeoutMs, 1234)
+      assert.equal(config.maxTokens, 8192)
     },
     {
       VISION_API_BASE_URL: 'https://env.example.com',
       VISION_MODEL: 'gpt-env',
       VISION_API_KEY: 'sk-env',
-      VISION_TIMEOUT_MS: '1234'
+      VISION_TIMEOUT_MS: '1234',
+      VISION_MAX_TOKENS: '8192'
     }
   )
 })
@@ -89,10 +92,32 @@ test('getRuntimeConfig prefers CLI over environment', () => {
 
 test('getRuntimeConfig accepts --vision-* alias flags', () => {
   withCleanEnv(() => {
-    const config = getRuntimeConfig(['--vision-api-base-url=https://alias.example.com', '--vision-model=alias-model'])
+    const config = getRuntimeConfig([
+      '--vision-api-base-url=https://alias.example.com',
+      '--vision-model=alias-model',
+      '--vision-max-tokens=7777'
+    ])
     assert.equal(config.apiBaseUrl, 'https://alias.example.com')
     assert.equal(config.defaultModel, 'alias-model')
+    assert.equal(config.maxTokens, 7777)
   })
+})
+
+test('getRuntimeConfig parses --max-tokens and prefers CLI over environment', () => {
+  withCleanEnv(
+    () => {
+      const config = getRuntimeConfig([
+        '--api-base-url=https://cli.example.com',
+        '--model=cli-model',
+        '--max-tokens',
+        '6144'
+      ])
+      assert.equal(config.maxTokens, 6144)
+    },
+    {
+      VISION_MAX_TOKENS: '2048'
+    }
+  )
 })
 
 test('getRuntimeConfig throws when apiBaseUrl is missing from both argv and env', () => {
@@ -121,13 +146,28 @@ test('getRuntimeConfig falls back to default when VISION_TIMEOUT_MS is not a pos
   )
 })
 
+test('getRuntimeConfig falls back to default when VISION_MAX_TOKENS is not a positive number', () => {
+  withCleanEnv(
+    () => {
+      const config = getRuntimeConfig([])
+      assert.equal(config.maxTokens, 4096)
+    },
+    {
+      VISION_API_BASE_URL: 'https://x.example.com',
+      VISION_MODEL: 'm',
+      VISION_MAX_TOKENS: 'not-a-number'
+    }
+  )
+})
+
 test('getRuntimeConfig uses defaults for apiPath, serverName, serverVersion when unspecified', () => {
   withCleanEnv(
     () => {
       const config = getRuntimeConfig([])
       assert.equal(config.apiPath, '/v1/chat/completions')
+      assert.equal(config.maxTokens, 4096)
       assert.equal(config.serverName, 'mcp-vision-server')
-      assert.equal(config.serverVersion, '0.1.0')
+      assert.equal(config.serverVersion, '0.1.3')
     },
     {
       VISION_API_BASE_URL: 'https://x.example.com',
@@ -149,5 +189,7 @@ test('getHelpText mentions all main options', () => {
   assert.match(text, /--api-key/)
   assert.match(text, /--model/)
   assert.match(text, /--timeout-ms/)
+  assert.match(text, /--max-tokens/)
   assert.match(text, /VISION_API_BASE_URL/)
+  assert.match(text, /VISION_MAX_TOKENS/)
 })

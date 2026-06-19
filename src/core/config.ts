@@ -6,6 +6,7 @@ interface RuntimeConfig {
   apiKey?: string
   defaultModel: string
   timeoutMs: number
+  maxTokens: number
   serverName: string
   serverVersion: string
 }
@@ -16,6 +17,7 @@ interface CliOptions {
   apiKey?: string
   defaultModel?: string
   timeoutMs?: number
+  maxTokens?: number
   serverName?: string
   serverVersion?: string
   helpRequested: boolean
@@ -83,6 +85,10 @@ function parseCliArgs(argv: string[]): CliOptions {
       case '--vision-timeout-ms':
         options.timeoutMs = readNumberValue(consumeValue(), 60000)
         break
+      case '--max-tokens':
+      case '--vision-max-tokens':
+        options.maxTokens = readNumberValue(consumeValue(), 4096)
+        break
       case '--server-name':
       case '--mcp-server-name':
         options.serverName = consumeValue()
@@ -116,6 +122,7 @@ export function getHelpText(): string {
     '  --api-key <key>           上游 API Key',
     '  --model <name>            默认视觉模型名',
     '  --timeout-ms <ms>         请求超时，默认 60000',
+    '  --max-tokens <n>          默认 max_tokens，默认 4096',
     '  --server-name <name>      MCP server 名称',
     '  --server-version <ver>    MCP server 版本',
     '  -h, --help                显示帮助',
@@ -124,7 +131,7 @@ export function getHelpText(): string {
     '  CLI 参数 > 环境变量 > 默认值',
     '',
     'Environment fallback:',
-    '  VISION_API_BASE_URL, VISION_API_PATH, VISION_API_KEY, VISION_MODEL, VISION_TIMEOUT_MS'
+    '  VISION_API_BASE_URL, VISION_API_PATH, VISION_API_KEY, VISION_MODEL, VISION_TIMEOUT_MS, VISION_MAX_TOKENS'
   ].join('\n')
 }
 
@@ -137,8 +144,9 @@ export function getRuntimeConfig(argv = process.argv.slice(2)): RuntimeConfig {
     apiKey: cli.apiKey || readEnv('VISION_API_KEY'),
     defaultModel: requireValue('defaultModel', cli.defaultModel || readEnv('VISION_MODEL')),
     timeoutMs: cli.timeoutMs || readNumberValue(readEnv('VISION_TIMEOUT_MS'), 60000),
+    maxTokens: cli.maxTokens || readNumberValue(readEnv('VISION_MAX_TOKENS'), 4096),
     serverName: cli.serverName || readEnv('MCP_SERVER_NAME') || 'mcp-vision-server',
-    serverVersion: cli.serverVersion || readEnv('MCP_SERVER_VERSION') || '0.1.0'
+    serverVersion: cli.serverVersion || readEnv('MCP_SERVER_VERSION') || '0.1.3'
   }
 }
 
@@ -148,7 +156,8 @@ export function createVisionAdapter(config = getRuntimeConfig()) {
     apiPath: config.apiPath,
     apiKey: config.apiKey,
     defaultModel: config.defaultModel,
-    timeoutMs: config.timeoutMs
+    timeoutMs: config.timeoutMs,
+    maxTokens: config.maxTokens
   })
 }
 

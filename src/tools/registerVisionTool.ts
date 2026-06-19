@@ -7,7 +7,7 @@ import { createImageInputSchema, loadImageInput } from '../core/image.js'
 export const visionOptionsShape = {
   model: z.string().min(1).optional().describe('Optional model override.'),
   detail: z.enum(['auto', 'low', 'high']).optional().describe('Optional detail level for providers that support it.'),
-  maxTokens: z.number().int().positive().max(4096).optional().describe('Optional max output tokens.')
+  maxTokens: z.number().int().positive().max(32768).optional().describe('Optional max output tokens.')
 }
 
 export const visionOutputShape = {

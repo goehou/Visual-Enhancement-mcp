@@ -18,6 +18,7 @@ export interface OpenAICompatibleConfig {
   apiKey?: string
   defaultModel: string
   timeoutMs: number
+  maxTokens: number
 }
 
 type ContentPart = { type: 'text'; text: string } | { type: string; text?: unknown }
@@ -59,7 +60,7 @@ export class OpenAICompatibleVisionAdapter {
           },
           body: JSON.stringify({
             model,
-            max_tokens: input.maxTokens ?? 1200,
+            max_tokens: input.maxTokens ?? this.config.maxTokens,
             messages: [
               {
                 role: 'user',
@@ -114,15 +115,21 @@ export function normalizeContent(data: OpenAICompatibleResponse): string {
   const message = data.choices?.[0]?.message
   const content = message?.content
   if (typeof content === 'string') {
-    return content.trim()
+    const text = content.trim()
+    if (text) {
+      return text
+    }
   }
 
   if (Array.isArray(content)) {
-    return content
+    const text = content
       .filter((part): part is { type: 'text'; text: string } => part.type === 'text' && typeof part.text === 'string')
       .map((part) => part.text.trim())
       .filter(Boolean)
       .join('\n')
+    if (text) {
+      return text
+    }
   }
 
   const reasoning = [message?.reasoning, message?.reasoning_content].find(

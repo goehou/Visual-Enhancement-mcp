@@ -102,6 +102,7 @@ CLI arguments > environment variables > defaults
 --api-key <key>           Upstream API key
 --model <name>            Default vision model
 --timeout-ms <ms>         Request timeout, default: 60000
+--max-tokens <n>          Default max_tokens, default: 4096
 --server-name <name>      MCP server name
 --server-version <ver>    MCP server version
 ```
@@ -120,6 +121,7 @@ VISION_API_PATH=/v1/chat/completions
 VISION_API_KEY=sk-xxxx
 VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
+VISION_MAX_TOKENS=4096
 ```
 
 ## Required configuration
@@ -133,6 +135,7 @@ At minimum you must tell the server where the upstream vision API lives and whic
 | `--api-key` | Yes* | Bearer key for the upstream API. *Optional only if your endpoint needs no auth | `sk-xxxx` |
 | `--model` | Yes | Name of a vision-capable model the upstream API exposes | `gpt-4o-mini`, `qwen-vl-max`, `your-vision-model` |
 | `--timeout-ms` | No | Request timeout in milliseconds | `60000` (default) |
+| `--max-tokens` | No | Default `max_tokens` sent upstream when a tool call omits `maxTokens` | `4096` (default) |
 
 The final request goes to `<api-base-url><api-path>`. For example `--api-base-url https://api.openai.com --api-path /v1/chat/completions` calls `https://api.openai.com/v1/chat/completions`.
 
@@ -145,7 +148,8 @@ codex mcp add vision -- `
   --api-path /v1/chat/completions `
   --api-key sk-xxxx `
   --model your-vision-model `
-  --timeout-ms 60000
+  --timeout-ms 60000 `
+  --max-tokens 4096
 ```
 
 ## Claude Code example
@@ -157,7 +161,8 @@ claude mcp add vision -- `
   --api-path /v1/chat/completions `
   --api-key sk-xxxx `
   --model your-vision-model `
-  --timeout-ms 60000
+  --timeout-ms 60000 `
+  --max-tokens 4096
 ```
 
 ## MCP client config (JSON)
@@ -176,7 +181,8 @@ Clients that use a JSON config file (Claude Desktop, VS Code, Cursor, etc.) can 
         "--api-path", "/v1/chat/completions",
         "--api-key", "sk-xxxx",
         "--model", "your-vision-model",
-        "--timeout-ms", "60000"
+        "--timeout-ms", "60000",
+        "--max-tokens", "4096"
       ]
     }
   }

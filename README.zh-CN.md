@@ -102,6 +102,7 @@ CLI 参数 > 环境变量 > 默认值
 --api-key <key>           上游 API key
 --model <name>            默认视觉模型
 --timeout-ms <ms>         请求超时时间，默认：60000
+--max-tokens <n>          默认 max_tokens，默认：4096
 --server-name <name>      MCP server 名称
 --server-version <ver>    MCP server 版本
 ```
@@ -120,6 +121,7 @@ VISION_API_PATH=/v1/chat/completions
 VISION_API_KEY=sk-xxxx
 VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
+VISION_MAX_TOKENS=4096
 ```
 
 ## 必填配置
@@ -133,6 +135,7 @@ VISION_TIMEOUT_MS=60000
 | `--api-key` | 是* | 上游 API 的 Bearer 密钥。*仅当端点无需鉴权时可省 | `sk-xxxx` |
 | `--model` | 是 | 上游 API 提供的、具备视觉能力的模型名 | `gpt-4o-mini`、`qwen-vl-max`、`your-vision-model` |
 | `--timeout-ms` | 否 | 请求超时（毫秒） | `60000`（默认） |
+| `--max-tokens` | 否 | 工具调用未传 `maxTokens` 时发送给上游的默认 `max_tokens` | `4096`（默认） |
 
 最终请求发往 `<api-base-url><api-path>`。例如 `--api-base-url https://api.openai.com --api-path /v1/chat/completions` 会调用 `https://api.openai.com/v1/chat/completions`。
 
@@ -145,7 +148,8 @@ codex mcp add vision -- `
   --api-path /v1/chat/completions `
   --api-key sk-xxxx `
   --model your-vision-model `
-  --timeout-ms 60000
+  --timeout-ms 60000 `
+  --max-tokens 4096
 ```
 
 ## Claude Code 示例
@@ -157,7 +161,8 @@ claude mcp add vision -- `
   --api-path /v1/chat/completions `
   --api-key sk-xxxx `
   --model your-vision-model `
-  --timeout-ms 60000
+  --timeout-ms 60000 `
+  --max-tokens 4096
 ```
 
 ## MCP 客户端配置（JSON）
@@ -176,7 +181,8 @@ claude mcp add vision -- `
         "--api-path", "/v1/chat/completions",
         "--api-key", "sk-xxxx",
         "--model", "your-vision-model",
-        "--timeout-ms", "60000"
+        "--timeout-ms", "60000",
+        "--max-tokens", "4096"
       ]
     }
   }
