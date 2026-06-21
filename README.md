@@ -2,118 +2,65 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-A local `stdio` MCP server that forwards image understanding and OCR requests to an existing vision-capable chat completions API.
+`mcp-vision-server` is an MCP `stdio` server that lets MCP clients analyze images and run OCR through an existing OpenAI-compatible vision Chat Completions API.
 
-## Features
+This document focuses on how to configure and use the server from an MCP client.
 
-- `vision_analyze`: general image understanding
-- `vision_ocr`: text extraction
-- Supports `imagePath`, `imageUrl`, and uploaded `imageBase64 + imageMediaType`
-- Accepts `http(s)://`, `data:`, and `file://` image URLs
-- Works with OpenAI-compatible Chat Completions APIs
+## What it provides
 
-## Why the previous attachment flow failed
+- `vision_analyze`: general image understanding with a custom prompt.
+- `vision_ocr`: OCR extraction with optional language and output-format hints.
+- Image input through exactly one of:
+  - `imagePath`: a local absolute image path available to the MCP server process.
+  - `imageUrl`: `http://`, `https://`, `data:`, or `file://` URL.
+  - `imageBase64` + `imageMediaType`: uploaded attachment bytes forwarded by the client.
+- OpenAI-compatible upstream request shape: Chat Completions with text plus `image_url` content.
+- Structured MCP output in addition to plain text content.
 
-The old server only accepted:
+## Required configuration
 
-- `imagePath`
-- `imageUrl`
+The server needs an upstream vision model endpoint. At minimum configure:
 
-When an MCP client let the user drag an image into chat but did not expose a local file path or URL to the tool call, the server had nothing it could read.
+| Setting | Required | CLI option | Environment variable | Description | Example |
+| --- | --- | --- | --- | --- | --- |
+| API base URL | Yes | `--api-base-url` | `VISION_API_BASE_URL` | Root URL of the upstream OpenAI-compatible API. Prefer scheme + host only; keep the request path in `api-path`. | `https://api.openai.com` |
+| Model | Yes | `--model` | `VISION_MODEL` | Default vision-capable model exposed by the upstream API. A tool call can override it with `model`. | `gpt-4o-mini` |
+| API key | Usually | `--api-key` | `VISION_API_KEY` | Bearer token sent as `Authorization: Bearer <key>`. Omit only when your endpoint does not require authentication. | `sk-xxxx` |
 
-This repo now also supports:
+The final upstream URL is built from:
 
-- `imageBase64`
-- `imageMediaType`
-
-That gives MCP clients a third transport shape for uploaded files: they can pass attachment bytes directly instead of inventing a path.
-
-## Important limitation
-
-This change makes the server attachment-friendly, but it does **not** force every MCP client to map drag-and-drop uploads into tool arguments automatically.
-
-What is supported now:
-
-- A client can send a local absolute path through `imagePath`
-- A client can send a `file://` URL through `imageUrl`
-- A client can send uploaded bytes through `imageBase64` plus `imageMediaType`
-
-What still depends on the client:
-
-- Whether dragging an image into the chat UI is automatically converted into one of the fields above
-
-If the host client never forwards attachment data to the MCP tool, the server still cannot see that file.
-
-## Requirements
-
-- Node.js 22+
-- A reachable vision / multimodal model API
-
-## Install
-
-### Run from npm (recommended)
-
-The package is published to npm, so you do not need to clone the repo. Run it directly with `npx`, passing your upstream API base URL, key, and model name:
-
-```bash
-npx -y mcp-vision-server \
-  --api-base-url https://your-api.example.com \
-  --api-path /v1/chat/completions \
-  --api-key sk-xxxx \
-  --model your-vision-model
+```text
+<api-base-url><api-path>
 ```
 
-Just checking the CLI help:
+Example:
 
-```bash
-npx -y mcp-vision-server --help
+```text
+VISION_API_BASE_URL=https://api.openai.com
+VISION_API_PATH=/v1/chat/completions
+=> https://api.openai.com/v1/chat/completions
 ```
 
-Or install it globally:
+## Full configuration reference
 
-```bash
-npm install -g mcp-vision-server
-mcp-vision-server --help
-```
-
-Most MCP clients (Codex, Claude Code, etc.) launch the server via `npx -y mcp-vision-server` automatically — see the examples below.
-
-### Build from source (development)
-
-```bash
-git clone https://github.com/goehou/mcp-vision-server.git
-cd mcp-vision-server
-npm install
-npm run build
-node dist/server.js --help
-```
-
-## Configuration priority
+Configuration priority:
 
 ```text
 CLI arguments > environment variables > defaults
 ```
 
-## CLI options
+| Purpose | CLI option | Alias | Environment variable | Default | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Upstream API base URL | `--api-base-url <url>` | `--vision-api-base-url` | `VISION_API_BASE_URL` | none | Required. Use the API root such as `https://api.openai.com`. |
+| Upstream API path | `--api-path <path>` | `--vision-api-path` | `VISION_API_PATH` | `/v1/chat/completions` | Chat Completions endpoint path. |
+| Upstream API key | `--api-key <key>` | `--vision-api-key` | `VISION_API_KEY` | none | Added as a Bearer token when set. |
+| Default model | `--model <name>` | `--vision-model` | `VISION_MODEL` | none | Required. Must support image input. |
+| Request timeout | `--timeout-ms <ms>` | `--vision-timeout-ms` | `VISION_TIMEOUT_MS` | `60000` | Invalid or non-positive environment values fall back to default. |
+| Default output token limit | `--max-tokens <n>` | `--vision-max-tokens` | `VISION_MAX_TOKENS` | `4096` | Sent upstream as `max_tokens` when a tool call omits `maxTokens`. |
+| MCP server name | `--server-name <name>` | `--mcp-server-name` | `MCP_SERVER_NAME` | `mcp-vision-server` | Metadata shown to the MCP client. |
+| MCP server version | `--server-version <ver>` | `--mcp-server-version` | `MCP_SERVER_VERSION` | `0.1.3` | Metadata shown to the MCP client. |
 
-```text
---api-base-url <url>      Upstream API base URL
---api-path <path>         Upstream API path, default: /v1/chat/completions
---api-key <key>           Upstream API key
---model <name>            Default vision model
---timeout-ms <ms>         Request timeout, default: 60000
---max-tokens <n>          Default max_tokens, default: 4096
---server-name <name>      MCP server name
---server-version <ver>    MCP server version
-```
-
-Show help:
-
-```bash
-node dist/server.js --help
-```
-
-## Environment variables
+Environment-style configuration example:
 
 ```bash
 VISION_API_BASE_URL=https://api.openai.com
@@ -122,52 +69,17 @@ VISION_API_KEY=sk-xxxx
 VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
 VISION_MAX_TOKENS=4096
+MCP_SERVER_NAME=mcp-vision-server
+MCP_SERVER_VERSION=0.1.3
 ```
 
-## Required configuration
+## MCP client configuration
 
-At minimum you must tell the server where the upstream vision API lives and which model to call:
+Most MCP clients should register this server as a `stdio` command. Replace the URL, key, and model with your provider values.
 
-| Option | Required | What to put | Example |
-| --- | --- | --- | --- |
-| `--api-base-url` | Yes | Root URL of your upstream OpenAI-compatible API (scheme + host, no path) | `https://api.openai.com` or `https://your-proxy.example.com` |
-| `--api-path` | No | Chat completions path appended to the base URL | `/v1/chat/completions` (default) |
-| `--api-key` | Yes* | Bearer key for the upstream API. *Optional only if your endpoint needs no auth | `sk-xxxx` |
-| `--model` | Yes | Name of a vision-capable model the upstream API exposes | `gpt-4o-mini`, `qwen-vl-max`, `your-vision-model` |
-| `--timeout-ms` | No | Request timeout in milliseconds | `60000` (default) |
-| `--max-tokens` | No | Default `max_tokens` sent upstream when a tool call omits `maxTokens` | `4096` (default) |
+### JSON config
 
-The final request goes to `<api-base-url><api-path>`. For example `--api-base-url https://api.openai.com --api-path /v1/chat/completions` calls `https://api.openai.com/v1/chat/completions`.
-
-## Codex example
-
-```powershell
-codex mcp add vision -- `
-  npx -y mcp-vision-server `
-  --api-base-url https://your-api.example.com `
-  --api-path /v1/chat/completions `
-  --api-key sk-xxxx `
-  --model your-vision-model `
-  --timeout-ms 60000 `
-  --max-tokens 4096
-```
-
-## Claude Code example
-
-```powershell
-claude mcp add vision -- `
-  npx -y mcp-vision-server `
-  --api-base-url https://your-api.example.com `
-  --api-path /v1/chat/completions `
-  --api-key sk-xxxx `
-  --model your-vision-model `
-  --timeout-ms 60000 `
-  --max-tokens 4096
-```
-
-## MCP client config (JSON)
-
-Clients that use a JSON config file (Claude Desktop, VS Code, Cursor, etc.) can register the server like this. Replace the URL, key, and model with your own:
+Use this shape for clients that accept `mcpServers` JSON, such as Claude Desktop, Cursor, VS Code-compatible MCP configs, and similar clients:
 
 ```json
 {
@@ -189,76 +101,153 @@ Clients that use a JSON config file (Claude Desktop, VS Code, Cursor, etc.) can 
 }
 ```
 
-If your client prefers environment variables over CLI flags, you can instead pass an `env` block (`VISION_API_BASE_URL`, `VISION_API_KEY`, `VISION_MODEL`, ...) and drop the matching `args`.
-
-## Tool inputs
-
-### `vision_analyze`
-
-Required:
-
-- `prompt`
-
-Exactly one image source:
-
-- `imagePath`: local absolute path
-- `imageUrl`: remote URL, `data:` URL, or `file://` URL
-- `imageBase64`: base64-encoded image payload
-
-Required with `imageBase64`:
-
-- `imageMediaType`: for example `image/png`, `image/jpeg`
-
-Optional:
-
-- `model`
-- `detail`: `auto | low | high`
-- `maxTokens`
-
-Example with a local path:
+If your client supports an `env` block, you can keep secrets out of `args`:
 
 ```json
 {
-  "name": "vision_analyze",
-  "arguments": {
-    "imagePath": "C:\\\\images\\\\cat.png",
-    "prompt": "Describe the main subject and any visible text."
+  "mcpServers": {
+    "vision": {
+      "command": "npx",
+      "args": ["-y", "mcp-vision-server"],
+      "env": {
+        "VISION_API_BASE_URL": "https://your-api.example.com",
+        "VISION_API_PATH": "/v1/chat/completions",
+        "VISION_API_KEY": "sk-xxxx",
+        "VISION_MODEL": "your-vision-model",
+        "VISION_TIMEOUT_MS": "60000",
+        "VISION_MAX_TOKENS": "4096"
+      }
+    }
   }
 }
 ```
 
-Example with uploaded bytes:
+### Codex
+
+```powershell
+codex mcp add vision -- `
+  npx -y mcp-vision-server `
+  --api-base-url https://your-api.example.com `
+  --api-path /v1/chat/completions `
+  --api-key sk-xxxx `
+  --model your-vision-model `
+  --timeout-ms 60000 `
+  --max-tokens 4096
+```
+
+### Claude Code
+
+```powershell
+claude mcp add vision -- `
+  npx -y mcp-vision-server `
+  --api-base-url https://your-api.example.com `
+  --api-path /v1/chat/completions `
+  --api-key sk-xxxx `
+  --model your-vision-model `
+  --timeout-ms 60000 `
+  --max-tokens 4096
+```
+
+## Upstream API contract
+
+The server sends a `POST` request to the configured Chat Completions URL:
+
+```json
+{
+  "model": "your-vision-model",
+  "max_tokens": 4096,
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        { "type": "text", "text": "Describe this image." },
+        {
+          "type": "image_url",
+          "image_url": {
+            "url": "data:image/png;base64,...",
+            "detail": "auto"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Response parsing supports:
+
+- `choices[0].message.content` as a string.
+- `choices[0].message.content` as an array of text parts.
+- `choices[0].message.reasoning` or `reasoning_content` as fallback text for compatible providers.
+
+## Image source behavior
+
+Exactly one image source must be supplied per tool call.
+
+| Field | Use when | Handling |
+| --- | --- | --- |
+| `imagePath` | The MCP server process can read an absolute local file path. | The file is read, MIME type is inferred from extension, and the image is sent upstream as a `data:` URL. |
+| `imageUrl` | The image is already addressable as `http(s)://`, `data:`, or `file://`. | `file://` is read like `imagePath`; remote URLs are passed upstream as URLs. |
+| `imageBase64` + `imageMediaType` | The MCP client can pass uploaded attachment bytes directly. | The payload is wrapped as `data:<imageMediaType>;base64,<imageBase64>`. |
+
+Supported local file extensions for MIME inference: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`.
+
+Drag-and-drop support depends on the host MCP client. If the client does not forward attachment data as `imagePath`, `imageUrl`, or `imageBase64`, the server cannot access that image.
+
+## Tools
+
+### `vision_analyze`
+
+Use this tool for general image understanding.
+
+Required:
+
+- `prompt`: instruction passed to the vision model.
+- Exactly one of `imagePath`, `imageUrl`, or `imageBase64`.
+
+Required with `imageBase64`:
+
+- `imageMediaType`: for example `image/png` or `image/jpeg`.
+
+Optional:
+
+- `model`: override the configured default model for this call.
+- `detail`: `auto`, `low`, or `high`; forwarded to providers that support image detail.
+- `maxTokens`: positive integer up to `32768`; overrides the configured default for this call.
+
+Example:
 
 ```json
 {
   "name": "vision_analyze",
   "arguments": {
-    "imageBase64": "<base64-image>",
-    "imageMediaType": "image/png",
-    "prompt": "Describe the UI and extract visible labels."
+    "imageUrl": "https://example.com/cat.png",
+    "prompt": "Describe the main subject and extract any visible text.",
+    "detail": "high",
+    "maxTokens": 2048
   }
 }
 ```
 
 ### `vision_ocr`
 
-Exactly one image source:
+Use this tool for text extraction.
 
-- `imagePath`
-- `imageUrl`
-- `imageBase64`
+Required:
+
+- Exactly one of `imagePath`, `imageUrl`, or `imageBase64`.
 
 Required with `imageBase64`:
 
-- `imageMediaType`
+- `imageMediaType`.
 
 Optional:
 
-- `languageHint`
-- `outputFormat`: `plain | markdown | json`, default: `plain`
-- `model`
-- `detail`
-- `maxTokens`
+- `languageHint`: language hint such as `en`, `zh-CN`, or `ja`.
+- `outputFormat`: `plain`, `markdown`, or `json`; default is `plain`.
+- `model`: override the configured default model for this call.
+- `detail`: `auto`, `low`, or `high`.
+- `maxTokens`: positive integer up to `32768`.
 
 Example:
 
@@ -266,16 +255,17 @@ Example:
 {
   "name": "vision_ocr",
   "arguments": {
-    "imageUrl": "file:///C:/images/receipt.png",
+    "imageBase64": "<base64-image>",
+    "imageMediaType": "image/png",
     "languageHint": "en",
     "outputFormat": "markdown"
   }
 }
 ```
 
-## Tool outputs
+## Tool output
 
-Both tools return the model text in `content` for compatibility, and also expose structured output for clients that support MCP `structuredContent`:
+Both tools return plain text in MCP `content` and structured data in `structuredContent`:
 
 ```json
 {
@@ -286,18 +276,12 @@ Both tools return the model text in `content` for compatibility, and also expose
 }
 ```
 
-## Tests
+## Provider notes
 
-```bash
-npm test
-```
-
-## Known limitations
-
-- Single-image input only
-- OpenAI-compatible upstream APIs only
-- Large images increase latency and token cost
-- Some upstream providers may ignore `detail` or `max_tokens`
+- The upstream API must accept OpenAI-compatible Chat Completions image input.
+- Some providers ignore `detail` or `max_tokens`; behavior then follows the provider.
+- Large images may increase latency, token usage, and provider-side request size.
+- Only one image is accepted per tool call.
 
 ## Links
 
