@@ -1,6 +1,6 @@
 {
   "name": "mcp-vision-server",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": false,
   "description": "MCP stdio server for image recognition via an existing vision model",
   "license": "MIT",

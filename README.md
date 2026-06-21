@@ -58,7 +58,7 @@ CLI arguments > environment variables > defaults
 | Request timeout | `--timeout-ms <ms>` | `--vision-timeout-ms` | `VISION_TIMEOUT_MS` | `60000` | Invalid or non-positive environment values fall back to default. |
 | Default output token limit | `--max-tokens <n>` | `--vision-max-tokens` | `VISION_MAX_TOKENS` | `4096` | Sent upstream as `max_tokens` when a tool call omits `maxTokens`. |
 | MCP server name | `--server-name <name>` | `--mcp-server-name` | `MCP_SERVER_NAME` | `mcp-vision-server` | Metadata shown to the MCP client. |
-| MCP server version | `--server-version <ver>` | `--mcp-server-version` | `MCP_SERVER_VERSION` | `0.1.3` | Metadata shown to the MCP client. |
+| MCP server version | `--server-version <ver>` | `--mcp-server-version` | `MCP_SERVER_VERSION` | `0.1.4` | Metadata shown to the MCP client. |
 
 Environment-style configuration example:
 
@@ -70,7 +70,7 @@ VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
 VISION_MAX_TOKENS=4096
 MCP_SERVER_NAME=mcp-vision-server
-MCP_SERVER_VERSION=0.1.3
+MCP_SERVER_VERSION=0.1.4
 ```
 
 ## MCP client configuration
