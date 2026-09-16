@@ -7,6 +7,9 @@ interface RuntimeConfig {
   defaultModel: string
   timeoutMs: number
   maxTokens: number
+  maxImageBytes: number
+  maxRetries: number
+  cacheTtlMs: number
   serverName: string
   serverVersion: string
 }
@@ -18,6 +21,9 @@ interface CliOptions {
   defaultModel?: string
   timeoutMs?: number
   maxTokens?: number
+  maxImageBytes?: number
+  maxRetries?: number
+  cacheTtlMs?: number
   serverName?: string
   serverVersion?: string
   helpRequested: boolean
@@ -41,6 +47,26 @@ function readNumberValue(raw: string | undefined, fallback: number): number {
   }
   const parsed = Number(raw)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+// Unlike readNumberValue, 0 is a valid explicit value (disables the cache) rather than a fallback trigger.
+function readNonNegativeNumberValue(raw: string | undefined, fallback: number): number {
+  if (!raw) {
+    return fallback
+  }
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+  return parsed <= 0 ? 0 : parsed
+}
+
+function readRetryCountValue(raw: string | undefined, fallback: number): number {
+  if (!raw) {
+    return fallback
+  }
+  const parsed = Number(raw)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback
 }
 
 function parseCliArgs(argv: string[]): CliOptions {
@@ -89,6 +115,18 @@ function parseCliArgs(argv: string[]): CliOptions {
       case '--vision-max-tokens':
         options.maxTokens = readNumberValue(consumeValue(), 4096)
         break
+      case '--max-image-bytes':
+      case '--vision-max-image-bytes':
+        options.maxImageBytes = readNumberValue(consumeValue(), 10485760)
+        break
+      case '--max-retries':
+      case '--vision-max-retries':
+        options.maxRetries = readRetryCountValue(consumeValue(), 2)
+        break
+      case '--cache-ttl-ms':
+      case '--vision-cache-ttl-ms':
+        options.cacheTtlMs = readNonNegativeNumberValue(consumeValue(), 300000)
+        break
       case '--server-name':
       case '--mcp-server-name':
         options.serverName = consumeValue()
@@ -123,6 +161,9 @@ export function getHelpText(): string {
     '  --model <name>            默认视觉模型名',
     '  --timeout-ms <ms>         请求超时，默认 60000',
     '  --max-tokens <n>          默认 max_tokens，默认 4096',
+    '  --max-image-bytes <n>     本地/base64 图片大小上限（字节），默认 10485760 (10MB)',
+    '  --max-retries <n>         上游请求失败重试次数（429/5xx/网络错误），默认 2',
+    '  --cache-ttl-ms <ms>       相同请求结果缓存时长，默认 300000；<=0 关闭缓存',
     '  --server-name <name>      MCP server 名称',
     '  --server-version <ver>    MCP server 版本',
     '  -h, --help                显示帮助',
@@ -131,7 +172,8 @@ export function getHelpText(): string {
     '  CLI 参数 > 环境变量 > 默认值',
     '',
     'Environment fallback:',
-    '  VISION_API_BASE_URL, VISION_API_PATH, VISION_API_KEY, VISION_MODEL, VISION_TIMEOUT_MS, VISION_MAX_TOKENS'
+    '  VISION_API_BASE_URL, VISION_API_PATH, VISION_API_KEY, VISION_MODEL, VISION_TIMEOUT_MS, VISION_MAX_TOKENS,',
+    '  VISION_MAX_IMAGE_BYTES, VISION_MAX_RETRIES, VISION_CACHE_TTL_MS'
   ].join('\n')
 }
 
@@ -145,8 +187,11 @@ export function getRuntimeConfig(argv = process.argv.slice(2)): RuntimeConfig {
     defaultModel: requireValue('defaultModel', cli.defaultModel || readEnv('VISION_MODEL')),
     timeoutMs: cli.timeoutMs || readNumberValue(readEnv('VISION_TIMEOUT_MS'), 60000),
     maxTokens: cli.maxTokens || readNumberValue(readEnv('VISION_MAX_TOKENS'), 4096),
+    maxImageBytes: cli.maxImageBytes || readNumberValue(readEnv('VISION_MAX_IMAGE_BYTES'), 10485760),
+    maxRetries: cli.maxRetries ?? readRetryCountValue(readEnv('VISION_MAX_RETRIES'), 2),
+    cacheTtlMs: cli.cacheTtlMs ?? readNonNegativeNumberValue(readEnv('VISION_CACHE_TTL_MS'), 300000),
     serverName: cli.serverName || readEnv('MCP_SERVER_NAME') || 'mcp-vision-server',
-    serverVersion: cli.serverVersion || readEnv('MCP_SERVER_VERSION') || '0.1.4'
+    serverVersion: cli.serverVersion || readEnv('MCP_SERVER_VERSION') || '0.2.0'
   }
 }
 
@@ -157,7 +202,8 @@ export function createVisionAdapter(config = getRuntimeConfig()) {
     apiKey: config.apiKey,
     defaultModel: config.defaultModel,
     timeoutMs: config.timeoutMs,
-    maxTokens: config.maxTokens
+    maxTokens: config.maxTokens,
+    maxRetries: config.maxRetries
   })
 }
 

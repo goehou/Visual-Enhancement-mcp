@@ -1,6 +1,6 @@
 export interface VisionAnalyzeInput {
   prompt: string
-  imageUrl: string
+  imageUrls: string[]
   model?: string
   maxTokens?: number
   detail?: 'auto' | 'low' | 'high'
@@ -19,6 +19,10 @@ export interface OpenAICompatibleConfig {
   defaultModel: string
   timeoutMs: number
   maxTokens: number
+  /** Number of retries on 429/5xx/network/timeout failures. Defaults to 2. */
+  maxRetries?: number
+  /** Base delay for exponential backoff between retries, in ms. Defaults to 300. */
+  retryBaseDelayMs?: number
 }
 
 type ContentPart = { type: 'text'; text: string } | { type: string; text?: unknown }
@@ -36,6 +40,20 @@ interface OpenAICompatibleResponse {
   }
 }
 
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504])
+const MAX_BACKOFF_DELAY_MS = 4000
+
+// Carries whether a failure is safe to retry, so the retry loop doesn't need to re-inspect the error.
+class UpstreamRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly retryable: boolean
+  ) {
+    super(message)
+    this.name = 'UpstreamRequestError'
+  }
+}
+
 export class OpenAICompatibleVisionAdapter {
   constructor(private readonly config: OpenAICompatibleConfig) {}
 
@@ -44,7 +62,30 @@ export class OpenAICompatibleVisionAdapter {
     if (!model) {
       throw new Error('VISION_MODEL 未配置，且工具调用未传入 model')
     }
+    if (!input.imageUrls.length) {
+      throw new Error('至少需要一张图片')
+    }
 
+    const maxRetries = Math.max(0, this.config.maxRetries ?? 2)
+    let lastError: unknown
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.performRequest(input, model)
+      } catch (error) {
+        lastError = error
+        const retryable = error instanceof UpstreamRequestError && error.retryable
+        if (!retryable || attempt === maxRetries) {
+          throw error
+        }
+        await sleep(this.backoffDelayMs(attempt))
+      }
+    }
+
+    throw lastError
+  }
+
+  private async performRequest(input: VisionAnalyzeInput, model: string): Promise<VisionAnalyzeResult> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs)
     const url = new URL(this.config.apiPath, withTrailingSlash(this.config.apiBaseUrl)).toString()
@@ -66,13 +107,13 @@ export class OpenAICompatibleVisionAdapter {
                 role: 'user',
                 content: [
                   { type: 'text', text: input.prompt },
-                  {
+                  ...input.imageUrls.map((imageUrl) => ({
                     type: 'image_url',
                     image_url: {
-                      url: input.imageUrl,
+                      url: imageUrl,
                       ...(input.detail ? { detail: input.detail } : {})
                     }
-                  }
+                  }))
                 ]
               }
             ]
@@ -89,10 +130,10 @@ export class OpenAICompatibleVisionAdapter {
       if (!response.ok) {
         const upstreamMessage = data?.error?.message
         const summary = truncate(bodyText, 200)
-        if (upstreamMessage) {
-          throw new Error(`上游视觉模型请求失败 (HTTP ${response.status}): ${upstreamMessage}`)
-        }
-        throw new Error(`上游视觉模型请求失败 (HTTP ${response.status}): ${summary}`)
+        const message = upstreamMessage
+          ? `上游视觉模型请求失败 (HTTP ${response.status}): ${upstreamMessage}`
+          : `上游视觉模型请求失败 (HTTP ${response.status}): ${summary}`
+        throw new UpstreamRequestError(message, RETRYABLE_STATUS_CODES.has(response.status))
       }
 
       if (!data) {
@@ -109,6 +150,16 @@ export class OpenAICompatibleVisionAdapter {
       clearTimeout(timer)
     }
   }
+
+  private backoffDelayMs(attempt: number): number {
+    const base = (this.config.retryBaseDelayMs ?? 300) * 2 ** attempt
+    const jitter = Math.floor(Math.random() * 100)
+    return Math.min(base + jitter, MAX_BACKOFF_DELAY_MS)
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export function normalizeContent(data: OpenAICompatibleResponse): string {
@@ -164,15 +215,15 @@ function truncate(text: string, max: number): string {
   return `${text.slice(0, max)}…`
 }
 
-function wrapFetchError(error: unknown, timeoutMs: number): Error {
+function wrapFetchError(error: unknown, timeoutMs: number): UpstreamRequestError {
   if (error instanceof Error) {
     if (error.name === 'AbortError') {
-      return new Error(`上游视觉模型请求超时 (${timeoutMs}ms)`)
+      return new UpstreamRequestError(`上游视觉模型请求超时 (${timeoutMs}ms)`, true)
     }
     if (error instanceof TypeError) {
-      return new Error(`无法连接到上游视觉模型 API: ${error.message}`)
+      return new UpstreamRequestError(`无法连接到上游视觉模型 API: ${error.message}`, true)
     }
-    return error
+    return new UpstreamRequestError(error.message, false)
   }
-  return new Error(String(error))
+  return new UpstreamRequestError(String(error), false)
 }

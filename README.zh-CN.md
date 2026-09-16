@@ -10,11 +10,15 @@
 
 - `vision_analyze`：按自定义 prompt 做通用图片理解。
 - `vision_ocr`：图片文字提取，可附带语言提示和输出格式提示。
-- 每次工具调用必须且只能选择一种图片来源：
+- 图片来源支持：
   - `imagePath`：MCP server 进程可读取的本地绝对路径。
   - `imageUrl`：`http://`、`https://`、`data:` 或 `file://` URL。
   - `imageBase64` + `imageMediaType`：由客户端直接转发的上传附件字节。
-- 上游请求兼容 OpenAI Chat Completions：文本内容 + `image_url` 图片内容。
+  - `images`：以上字段组成的数组（最多 8 张），用于多图对比等场景。
+- 上游请求兼容 OpenAI Chat Completions：文本内容 + 一个或多个 `image_url` 内容块。
+- 上游 `429`/`5xx`/网络/超时失败时自动带退避重试。
+- 本地文件、base64、data URL 图片有大小上限，避免占用过多内存。
+- 可选的内存内结果缓存，命中相同（工具 + prompt + 图片 + 选项）的调用。
 - 除普通文本 `content` 外，还返回 MCP `structuredContent` 结构化结果。
 
 ## 必填配置
@@ -57,6 +61,9 @@ CLI 参数 > 环境变量 > 默认值
 | 默认模型 | `--model <name>` | `--vision-model` | `VISION_MODEL` | 无 | 必填。模型必须支持图片输入。 |
 | 请求超时 | `--timeout-ms <ms>` | `--vision-timeout-ms` | `VISION_TIMEOUT_MS` | `60000` | 毫秒。环境变量为非法值或非正数时回退默认值。 |
 | 默认输出 token 上限 | `--max-tokens <n>` | `--vision-max-tokens` | `VISION_MAX_TOKENS` | `4096` | 工具调用未传 `maxTokens` 时，以 `max_tokens` 发送给上游。 |
+| 图片大小上限 | `--max-image-bytes <n>` | `--vision-max-image-bytes` | `VISION_MAX_IMAGE_BYTES` | `10485760`（10MB） | 作用于 `imagePath`、`imageBase64`、`file:`/`data:` URL，在数据被读入内存前校验。 |
+| 上游重试次数 | `--max-retries <n>` | `--vision-max-retries` | `VISION_MAX_RETRIES` | `2` | 遇到 `429`/`5xx`/网络/超时失败时按指数退避重试；`0` 表示关闭重试。 |
+| 结果缓存时长 | `--cache-ttl-ms <ms>` | `--vision-cache-ttl-ms` | `VISION_CACHE_TTL_MS` | `300000`（5 分钟） | 缓存相同（工具 + prompt + 图片 + 选项）的调用结果；`<= 0` 关闭缓存。 |
 | MCP server 名称 | `--server-name <name>` | `--mcp-server-name` | `MCP_SERVER_NAME` | `mcp-vision-server` | 展示给 MCP 客户端的元信息。 |
 | MCP server 版本 | `--server-version <ver>` | `--mcp-server-version` | `MCP_SERVER_VERSION` | package version | 展示给 MCP 客户端的元信息。 |
 
@@ -69,8 +76,11 @@ VISION_API_KEY=sk-xxxx
 VISION_MODEL=gpt-4o-mini
 VISION_TIMEOUT_MS=60000
 VISION_MAX_TOKENS=4096
+VISION_MAX_IMAGE_BYTES=10485760
+VISION_MAX_RETRIES=2
+VISION_CACHE_TTL_MS=300000
 MCP_SERVER_NAME=mcp-vision-server
-MCP_SERVER_VERSION=0.1.4
+MCP_SERVER_VERSION=0.2.0
 ```
 
 ## MCP 客户端配置
@@ -182,17 +192,25 @@ claude mcp add vision -- `
 
 ## 图片来源处理规则
 
-每次工具调用必须且只能传一种图片来源。
+每次工具调用必须且只能选择一种图片来源，除非使用 `images` 传多张图。
 
 | 字段 | 适用场景 | 处理方式 |
 | --- | --- | --- |
 | `imagePath` | MCP server 进程能读取本地绝对路径。 | 读取文件，按扩展名推断 MIME，转成 `data:` URL 后发给上游。 |
 | `imageUrl` | 图片已有 `http(s)://`、`data:` 或 `file://` 地址。 | `file://` 会像 `imagePath` 一样读取；远程 URL 直接传给上游。 |
 | `imageBase64` + `imageMediaType` | MCP 客户端能直接转发上传附件字节。 | 包装为 `data:<imageMediaType>;base64,<imageBase64>`。 |
+| `images` | 一次调用需要多张图片（例如前后对比、多页文档）。 | 数组（最多 8 项），每项遵循与上面相同的 `imagePath`/`imageUrl`/`imageBase64` 规则；与顶层单图字段互斥。 |
 
 本地文件 MIME 推断支持扩展名：`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`、`.bmp`。
 
 拖拽图片是否可用取决于宿主 MCP 客户端：如果客户端没有把附件转成 `imagePath`、`imageUrl` 或 `imageBase64` 传给工具，服务就无法读取该图片。
+
+### 大小限制与容错
+
+- 本地文件、base64、`data:`/`file:` URL 图片超过 `maxImageBytes`（默认 10MB）会在读入内存前被拒绝。
+- 远程 `http(s)://` URL 会原样转发给上游 API，本服务不会下载或校验其大小。
+- 上游请求遇到 `429`、`5xx`、网络或超时失败时会按指数退避自动重试（见 `--max-retries`）。
+- 相同调用（同一工具、prompt、图片与选项）可命中内存缓存，无需再次请求上游（见 `--cache-ttl-ms`）。
 
 ## 工具说明
 
@@ -203,14 +221,15 @@ claude mcp add vision -- `
 必填：
 
 - `prompt`：传给视觉模型的指令。
-- `imagePath`、`imageUrl`、`imageBase64` 三选一且只能选一。
+- `imagePath`、`imageUrl`、`imageBase64`、`images` 四选一且只能选一。
 
-使用 `imageBase64` 时额外必填：
+使用 `imageBase64`（或 `images` 中的 base64 项）时额外必填：
 
 - `imageMediaType`：例如 `image/png` 或 `image/jpeg`。
 
 可选：
 
+- `images`：最多 8 张图片的数组（每项遵循 `imagePath`/`imageUrl`/`imageBase64` 规则），用于多图对比等场景。
 - `model`：覆盖配置中的默认模型，仅对本次调用生效。
 - `detail`：`auto`、`low` 或 `high`；转发给支持图片 detail 的 provider。
 - `maxTokens`：正整数，最大 `32768`；覆盖本次调用的默认输出 token 上限。
@@ -229,20 +248,36 @@ claude mcp add vision -- `
 }
 ```
 
+多图示例：
+
+```json
+{
+  "name": "vision_analyze",
+  "arguments": {
+    "images": [
+      { "imageUrl": "https://example.com/before.png" },
+      { "imageUrl": "https://example.com/after.png" }
+    ],
+    "prompt": "Compare these two screenshots and describe what changed."
+  }
+}
+```
+
 ### `vision_ocr`
 
 用于图片文字提取。
 
 必填：
 
-- `imagePath`、`imageUrl`、`imageBase64` 三选一且只能选一。
+- `imagePath`、`imageUrl`、`imageBase64`、`images` 四选一且只能选一。
 
-使用 `imageBase64` 时额外必填：
+使用 `imageBase64`（或 `images` 中的 base64 项）时额外必填：
 
 - `imageMediaType`。
 
 可选：
 
+- `images`：最多 8 张图片的数组，用于多页或多图 OCR。
 - `languageHint`：语言提示，例如 `en`、`zh-CN`、`ja`。
 - `outputFormat`：`plain`、`markdown` 或 `json`；默认 `plain`。
 - `model`：覆盖配置中的默认模型，仅对本次调用生效。
@@ -271,17 +306,21 @@ claude mcp add vision -- `
 {
   "text": "recognized or analyzed text",
   "model": "model-used",
-  "sourceLabel": "resolved image source",
-  "mediaType": "image/png"
+  "images": [
+    { "sourceLabel": "resolved image source", "mediaType": "image/png" }
+  ],
+  "cached": false
 }
 ```
+
+`images` 按调用顺序列出每张已解析图片（单图调用时只有一项）。`cached` 为 `true` 表示本次结果来自内存缓存，没有真正请求上游 API。
 
 ## Provider 注意事项
 
 - 上游 API 必须支持 OpenAI-compatible Chat Completions 图片输入。
 - 部分 provider 可能忽略 `detail` 或 `max_tokens`；实际行为以上游为准。
 - 大图会增加延迟、token 消耗和 provider 侧请求体积。
-- 单次工具调用只支持一张图片。
+- 通过 `images` 单次调用最多支持 8 张图片。
 
 ## 友情链接
 

@@ -13,6 +13,9 @@ const ENV_KEYS = [
   'VISION_MODEL',
   'VISION_TIMEOUT_MS',
   'VISION_MAX_TOKENS',
+  'VISION_MAX_IMAGE_BYTES',
+  'VISION_MAX_RETRIES',
+  'VISION_CACHE_TTL_MS',
   'MCP_SERVER_NAME',
   'MCP_SERVER_VERSION'
 ]
@@ -169,12 +172,74 @@ test('getRuntimeConfig uses defaults for apiPath, serverName, serverVersion when
       const config = getRuntimeConfig([])
       assert.equal(config.apiPath, '/v1/chat/completions')
       assert.equal(config.maxTokens, 4096)
+      assert.equal(config.maxImageBytes, 10485760)
+      assert.equal(config.maxRetries, 2)
+      assert.equal(config.cacheTtlMs, 300000)
       assert.equal(config.serverName, 'mcp-vision-server')
       assert.equal(config.serverVersion, pkgVersion)
     },
     {
       VISION_API_BASE_URL: 'https://x.example.com',
       VISION_MODEL: 'm'
+    }
+  )
+})
+
+test('getRuntimeConfig parses --max-image-bytes and prefers CLI over environment', () => {
+  withCleanEnv(
+    () => {
+      const config = getRuntimeConfig([
+        '--api-base-url=https://cli.example.com',
+        '--model=cli-model',
+        '--max-image-bytes',
+        '2048'
+      ])
+      assert.equal(config.maxImageBytes, 2048)
+    },
+    {
+      VISION_MAX_IMAGE_BYTES: '4096'
+    }
+  )
+})
+
+test('getRuntimeConfig parses --max-retries, allowing zero', () => {
+  withCleanEnv(() => {
+    const config = getRuntimeConfig(['--api-base-url=https://x.example.com', '--model=m', '--max-retries', '0'])
+    assert.equal(config.maxRetries, 0)
+  })
+})
+
+test('getRuntimeConfig falls back to default when VISION_MAX_RETRIES is not a valid integer', () => {
+  withCleanEnv(
+    () => {
+      const config = getRuntimeConfig([])
+      assert.equal(config.maxRetries, 2)
+    },
+    {
+      VISION_API_BASE_URL: 'https://x.example.com',
+      VISION_MODEL: 'm',
+      VISION_MAX_RETRIES: 'not-a-number'
+    }
+  )
+})
+
+test('getRuntimeConfig parses --cache-ttl-ms, allowing zero to disable the cache', () => {
+  withCleanEnv(() => {
+    const config = getRuntimeConfig(['--api-base-url=https://x.example.com', '--model=m', '--cache-ttl-ms', '0'])
+    assert.equal(config.cacheTtlMs, 0)
+  })
+})
+
+test('getRuntimeConfig falls back to default when VISION_CACHE_TTL_MS is not a valid number', () => {
+  withCleanEnv(
+    () => {
+      const config = getRuntimeConfig([])
+      assert.equal(config.cacheTtlMs, 300000)
+    },
+    {
+      VISION_API_BASE_URL: 'https://x.example.com',
+      VISION_MODEL: 'm',
+      VISION_CACHE_TTL_MS: 'not-a-number'
     }
   )
 })

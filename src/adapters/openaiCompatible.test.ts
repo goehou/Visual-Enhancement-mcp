@@ -102,6 +102,8 @@ function createAdapter(overrides: Partial<ConstructorParameters<typeof OpenAICom
     defaultModel: 'vision-model',
     timeoutMs: 50,
     maxTokens: 4096,
+    maxRetries: 0,
+    retryBaseDelayMs: 1,
     ...overrides
   })
 }
@@ -133,7 +135,7 @@ test('analyze surfaces abort as a friendly timeout error', async () => {
       }),
     async () => {
       await assert.rejects(
-        adapter.analyze({ prompt: 'describe', imageUrl: 'https://example.com/a.png' }),
+        adapter.analyze({ prompt: 'describe', imageUrls: ['https://example.com/a.png'] }),
         /请求超时 \(10ms\)/
       )
     }
@@ -149,7 +151,7 @@ test('analyze wraps fetch TypeError as a connection error', async () => {
     },
     async () => {
       await assert.rejects(
-        adapter.analyze({ prompt: 'x', imageUrl: 'https://example.com/a.png' }),
+        adapter.analyze({ prompt: 'x', imageUrls: ['https://example.com/a.png'] }),
         /无法连接到上游视觉模型 API: fetch failed: ENOTFOUND/
       )
     }
@@ -163,7 +165,7 @@ test('analyze includes status and body prefix when upstream returns non-JSON', a
     async () => new Response('<html>bad gateway</html>', { status: 502, headers: { 'content-type': 'text/html' } }),
     async () => {
       await assert.rejects(
-        adapter.analyze({ prompt: 'x', imageUrl: 'https://example.com/a.png' }),
+        adapter.analyze({ prompt: 'x', imageUrls: ['https://example.com/a.png'] }),
         /HTTP 502.*<html>bad gateway<\/html>/s
       )
     }
@@ -181,7 +183,7 @@ test('analyze surfaces upstream error.message when JSON body carries one', async
       }),
     async () => {
       await assert.rejects(
-        adapter.analyze({ prompt: 'x', imageUrl: 'https://example.com/a.png' }),
+        adapter.analyze({ prompt: 'x', imageUrls: ['https://example.com/a.png'] }),
         /HTTP 401.*invalid key/s
       )
     }
@@ -202,7 +204,7 @@ test('analyze returns normalized text on success', async () => {
     async () => {
       const result = await adapter.analyze({
         prompt: 'describe',
-        imageUrl: 'https://example.com/a.png'
+        imageUrls: ['https://example.com/a.png']
       })
       assert.equal(result.text, 'hello world')
       assert.equal(result.model, 'vision-model')
@@ -227,7 +229,7 @@ test('analyze sends configured max token default when input omits maxTokens', as
     async () => {
       await adapter.analyze({
         prompt: 'describe',
-        imageUrl: 'https://example.com/a.png'
+        imageUrls: ['https://example.com/a.png']
       })
     }
   )
@@ -252,11 +254,106 @@ test('analyze prefers input maxTokens over configured default', async () => {
     async () => {
       await adapter.analyze({
         prompt: 'describe',
-        imageUrl: 'https://example.com/a.png',
+        imageUrls: ['https://example.com/a.png'],
         maxTokens: 1234
       })
     }
   )
 
   assert.equal(requestBody.max_tokens, 1234)
+})
+
+test('analyze rejects when no images are provided', async () => {
+  const adapter = createAdapter()
+  await assert.rejects(adapter.analyze({ prompt: 'x', imageUrls: [] }), /至少需要一张图片/)
+})
+
+test('analyze sends one image_url content part per image, in order', async () => {
+  const adapter = createAdapter()
+  let requestBody: any
+
+  await withStubFetch(
+    async (_url, init) => {
+      requestBody = JSON.parse(init.body as string)
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    },
+    async () => {
+      await adapter.analyze({
+        prompt: 'compare',
+        imageUrls: ['https://example.com/a.png', 'https://example.com/b.png']
+      })
+    }
+  )
+
+  const parts = requestBody.messages[0].content
+  assert.equal(parts.length, 3)
+  assert.equal(parts[0].type, 'text')
+  assert.equal(parts[1].image_url.url, 'https://example.com/a.png')
+  assert.equal(parts[2].image_url.url, 'https://example.com/b.png')
+})
+
+test('analyze retries on 503 and succeeds on the next attempt', async () => {
+  const adapter = createAdapter({ maxRetries: 2, retryBaseDelayMs: 1 })
+  let attempts = 0
+
+  await withStubFetch(
+    async () => {
+      attempts += 1
+      if (attempts === 1) {
+        return new Response('service unavailable', { status: 503, headers: { 'content-type': 'text/plain' } })
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'recovered' } }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    },
+    async () => {
+      const result = await adapter.analyze({ prompt: 'x', imageUrls: ['https://example.com/a.png'] })
+      assert.equal(result.text, 'recovered')
+    }
+  )
+
+  assert.equal(attempts, 2)
+})
+
+test('analyze does not retry on 400 and exhausts retries on repeated 500', async () => {
+  const adapterNoRetryOn400 = createAdapter({ maxRetries: 2, retryBaseDelayMs: 1 })
+  let attempts400 = 0
+
+  await withStubFetch(
+    async () => {
+      attempts400 += 1
+      return new Response(JSON.stringify({ error: { message: 'bad request' } }), {
+        status: 400,
+        headers: { 'content-type': 'application/json' }
+      })
+    },
+    async () => {
+      await assert.rejects(
+        adapterNoRetryOn400.analyze({ prompt: 'x', imageUrls: ['https://example.com/a.png'] }),
+        /HTTP 400/
+      )
+    }
+  )
+  assert.equal(attempts400, 1)
+
+  const adapterExhausted = createAdapter({ maxRetries: 2, retryBaseDelayMs: 1 })
+  let attempts500 = 0
+
+  await withStubFetch(
+    async () => {
+      attempts500 += 1
+      return new Response('boom', { status: 500, headers: { 'content-type': 'text/plain' } })
+    },
+    async () => {
+      await assert.rejects(
+        adapterExhausted.analyze({ prompt: 'x', imageUrls: ['https://example.com/a.png'] }),
+        /HTTP 500/
+      )
+    }
+  )
+  assert.equal(attempts500, 3)
 })

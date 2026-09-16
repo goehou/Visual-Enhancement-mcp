@@ -3,9 +3,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
+import { ResultCache } from './core/cache.js'
 import { createVisionAdapter, getHelpText, getRuntimeConfig, getServerMeta, isHelpRequested } from './core/config.js'
 import { registerVisionAnalyzeTool } from './tools/visionAnalyze.js'
 import { registerVisionOcrTool } from './tools/visionOcr.js'
+import type { VisionCacheValue } from './tools/registerVisionTool.js'
 
 async function main() {
   if (isHelpRequested()) {
@@ -25,12 +27,18 @@ async function main() {
       'Use vision_ocr for text extraction.',
       'Prefer imagePath for local files.',
       'Use imageUrl for remote URLs, data URLs, or file URLs.',
-      'Use imageBase64 with imageMediaType when the client can forward uploaded attachment bytes.'
+      'Use imageBase64 with imageMediaType when the client can forward uploaded attachment bytes.',
+      'Use images[] instead of the single-image fields to send multiple images in one call (e.g. comparisons).'
     ].join(' ')
   })
 
-  registerVisionAnalyzeTool(server, adapter)
-  registerVisionOcrTool(server, adapter)
+  const toolOptions = {
+    maxImageBytes: runtimeConfig.maxImageBytes,
+    cache: new ResultCache<VisionCacheValue>(runtimeConfig.cacheTtlMs)
+  }
+
+  registerVisionAnalyzeTool(server, adapter, toolOptions)
+  registerVisionOcrTool(server, adapter, toolOptions)
 
   const transport = new StdioServerTransport()
   await server.connect(transport)
@@ -38,6 +46,7 @@ async function main() {
     `${meta.name} v${meta.version} running on stdio ` +
       `(apiBase=${runtimeConfig.apiBaseUrl}, path=${runtimeConfig.apiPath}, ` +
       `model=${runtimeConfig.defaultModel}, timeout=${runtimeConfig.timeoutMs}ms, ` +
+      `maxRetries=${runtimeConfig.maxRetries}, cacheTtlMs=${runtimeConfig.cacheTtlMs}, ` +
       `apiKey=${runtimeConfig.apiKey ? 'set' : 'none'})`
   )
 }
@@ -46,3 +55,4 @@ main().catch((error) => {
   console.error('Fatal error in main():', error)
   process.exit(1)
 })
+

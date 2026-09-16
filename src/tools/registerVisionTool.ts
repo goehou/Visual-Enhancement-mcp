@@ -2,7 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import * as z from 'zod/v4'
 
 import type { OpenAICompatibleVisionAdapter } from '../adapters/openaiCompatible.js'
-import { createImageInputSchema, loadImageInput } from '../core/image.js'
+import { buildCacheKey, type ResultCache } from '../core/cache.js'
+import { createImageInputSchema, loadImageInputs, type SingleImageInput } from '../core/image.js'
 
 export const visionOptionsShape = {
   model: z.string().min(1).optional().describe('Optional model override.'),
@@ -13,8 +14,15 @@ export const visionOptionsShape = {
 export const visionOutputShape = {
   text: z.string().describe('Text returned by the vision model.'),
   model: z.string().describe('Model used for the request.'),
-  sourceLabel: z.string().describe('Resolved image source label.'),
-  mediaType: z.string().describe('Resolved image media type.')
+  images: z
+    .array(
+      z.object({
+        sourceLabel: z.string().describe('Resolved image source label.'),
+        mediaType: z.string().describe('Resolved image media type.')
+      })
+    )
+    .describe('Resolved image sources, in call order.'),
+  cached: z.boolean().describe('True when the result was served from the in-memory result cache.')
 }
 
 export interface VisionToolDefinition {
@@ -25,11 +33,25 @@ export interface VisionToolDefinition {
   buildPrompt: (args: Record<string, unknown>) => string
 }
 
+export interface RegisterVisionToolOptions {
+  /** Max bytes allowed for local file / base64 / data-URL images. */
+  maxImageBytes?: number
+  /** Shared cache for identical (tool + prompt + images + options) requests. */
+  cache?: ResultCache<VisionCacheValue>
+}
+
+export interface VisionCacheValue {
+  text: string
+  model: string
+  images: Array<{ sourceLabel: string; mediaType: string }>
+}
+
 type VisionToolArgs = {
   imagePath?: string
   imageUrl?: string
   imageBase64?: string
   imageMediaType?: string
+  images?: SingleImageInput[]
   model?: string
   detail?: 'auto' | 'low' | 'high'
   maxTokens?: number
@@ -38,7 +60,8 @@ type VisionToolArgs = {
 export function registerVisionTool(
   server: McpServer,
   adapter: OpenAICompatibleVisionAdapter,
-  def: VisionToolDefinition
+  def: VisionToolDefinition,
+  options: RegisterVisionToolOptions = {}
 ): void {
   server.registerTool(
     def.name,
@@ -50,26 +73,44 @@ export function registerVisionTool(
     },
     async (rawArgs) => {
       const args = rawArgs as VisionToolArgs
-      const { imagePath, imageUrl, imageBase64, imageMediaType, model, detail, maxTokens, ...extraArgs } = args
-      const image = await loadImageInput({ imagePath, imageUrl, imageBase64, imageMediaType })
-      const result = await adapter.analyze({
-        prompt: def.buildPrompt(extraArgs),
-        imageUrl: image.imageUrl,
-        model,
-        detail,
-        maxTokens
-      })
-      const structuredContent = {
-        text: result.text,
-        model: result.model,
-        sourceLabel: image.sourceLabel,
-        mediaType: image.mediaType
+      const { imagePath, imageUrl, imageBase64, imageMediaType, images, model, detail, maxTokens, ...extraArgs } =
+        args
+      const loadedImages = await loadImageInputs(
+        { imagePath, imageUrl, imageBase64, imageMediaType, images },
+        options.maxImageBytes
+      )
+      const prompt = def.buildPrompt(extraArgs)
+      const imageUrls = loadedImages.map((image) => image.imageUrl)
+
+      const cacheKey = options.cache
+        ? buildCacheKey({ tool: def.name, prompt, imageUrls, model, detail, maxTokens })
+        : undefined
+      const cachedValue = cacheKey ? options.cache?.get(cacheKey) : undefined
+
+      const resolved: VisionCacheValue =
+        cachedValue ??
+        (await adapter.analyze({ prompt, imageUrls, model, detail, maxTokens }).then((result) => ({
+          text: result.text,
+          model: result.model,
+          images: loadedImages.map((image) => ({ sourceLabel: image.sourceLabel, mediaType: image.mediaType }))
+        })))
+
+      if (cacheKey && !cachedValue) {
+        options.cache?.set(cacheKey, resolved)
       }
+
+      const structuredContent = {
+        text: resolved.text,
+        model: resolved.model,
+        images: resolved.images,
+        cached: Boolean(cachedValue)
+      }
+
       return {
         content: [
           {
             type: 'text' as const,
-            text: result.text
+            text: resolved.text
           }
         ],
         structuredContent
@@ -77,3 +118,4 @@ export function registerVisionTool(
     }
   )
 }
+
