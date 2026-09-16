@@ -146,7 +146,7 @@ export function getRuntimeConfig(argv = process.argv.slice(2)): RuntimeConfig {
     timeoutMs: cli.timeoutMs || readNumberValue(readEnv('VISION_TIMEOUT_MS'), 60000),
     maxTokens: cli.maxTokens || readNumberValue(readEnv('VISION_MAX_TOKENS'), 4096),
     serverName: cli.serverName || readEnv('MCP_SERVER_NAME') || 'mcp-vision-server',
-    serverVersion: cli.serverVersion || readEnv('MCP_SERVER_VERSION') || '0.1.3'
+    serverVersion: cli.serverVersion || readEnv('MCP_SERVER_VERSION') || '0.1.4'
   }
 }
 

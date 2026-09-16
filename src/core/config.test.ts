@@ -1,7 +1,10 @@
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { getHelpText, getRuntimeConfig, isHelpRequested } from './config.js'
+
+const pkgVersion = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')).version
 
 const ENV_KEYS = [
   'VISION_API_BASE_URL',
@@ -167,7 +170,7 @@ test('getRuntimeConfig uses defaults for apiPath, serverName, serverVersion when
       assert.equal(config.apiPath, '/v1/chat/completions')
       assert.equal(config.maxTokens, 4096)
       assert.equal(config.serverName, 'mcp-vision-server')
-      assert.equal(config.serverVersion, '0.1.3')
+      assert.equal(config.serverVersion, pkgVersion)
     },
     {
       VISION_API_BASE_URL: 'https://x.example.com',
