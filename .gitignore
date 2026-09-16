@@ -4,3 +4,4 @@ dist/
 .claude/
 .vscode/
 *.tgz
+.github/
